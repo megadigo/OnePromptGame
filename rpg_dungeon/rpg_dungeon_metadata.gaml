@@ -60,7 +60,7 @@ gameplayground:
 
 entities:
   player:
-    shape: "triangle"
+    shape: "wizard_graphic_pixel_art"
     size: 
       radius: 15
     color: "#00FF00"  # Green
@@ -88,7 +88,7 @@ entities:
   enemies:
     types:
       - name: "Slime"
-        shape: "circle"
+        shape: "slime_pixel_art"
         size: { radius: 12 }
         color: "#00FF00"
         health: 30
@@ -99,7 +99,7 @@ entities:
         gold_drop: { min: 5, max: 15 }
         spawn_chance: 0.5
       - name: "Skeleton"
-        shape: "square"
+        shape: "skeleton_pixel_art"
         size: { width: 20, height: 20 }
         color: "#CCCCCC"
         health: 50
@@ -110,7 +110,7 @@ entities:
         gold_drop: { min: 10, max: 25 }
         spawn_chance: 0.3
       - name: "Orc"
-        shape: "square"
+        shape: "orc_pixel_art"
         size: { width: 25, height: 25 }
         color: "#228B22"
         health: 80
