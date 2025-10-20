@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Invaders</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 40px rgba(255, 128, 0, 0.5);
+        }
+        
+        #game-canvas {
+            display: block;
+            border: 3px solid #FF8000;
+            background: #000000;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas" width="1200" height="800"></canvas>
+    </div>
+    
+    <script>
+        // Game Configuration
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game State
+        let gameState = 'menu'; // 'menu', 'playing', 'gameOver'
+        let lives = 3;
+        let level = 1;
+        let score = 0;
+        
+        // Input State
+        const keys = {};
+        
+        // Player Configuration
+        const player = {
+            x: 600 - 25, // Center horizontally (1200/2 - width/2)
+            y: 750,
+            width: 50,
+            height: 50,
+            speed: 5,
+            color: '#0080FF'
+        };
+        
+        // Bullets Arrays
+        let playerBullets = [];
+        let enemyBullets = [];
+        
+        // Enemy Configuration
+        let enemies = [];
+        let enemyDirection = 1; // 1 for right, -1 for left
+        let enemyMoveTimer = 0;
+        let enemyShootTimer = 0;
+        const BASE_ENEMY_MOVE_INTERVAL = 40; // Base frames between moves (faster than before)
+        const BASE_ENEMY_SHOOT_INTERVAL = 30; // Base frames between shots (VERY frequent shooting)
+        let enemyMoveInterval = BASE_ENEMY_MOVE_INTERVAL;
+        let enemyShootInterval = BASE_ENEMY_SHOOT_INTERVAL;
+        const BASE_ENEMY_HORIZONTAL_SPEED = 15; // Base pixels per move (faster than before)
+        let enemyHorizontalSpeed = BASE_ENEMY_HORIZONTAL_SPEED;
+        const ENEMY_DESCENT_AMOUNT = 20;
+        const BASE_ENEMY_SHOOT_PROBABILITY = 0.5; // Base 50% chance to shoot
+        let enemyShootProbability = BASE_ENEMY_SHOOT_PROBABILITY; // This will increase with levels
+        
+        // Audio (optional - will fail silently if files don't exist)
+        const audio = {
+            playerShoot: new Audio('assets/player_shoot.wav'),
+            playerDie: new Audio('assets/player_die.wav'),
+            enemyDie: new Audio('assets/enemy_die.wav')
+        };
+        
+        // Initialize audio (mute errors)
+        Object.values(audio).forEach(sound => {
+            sound.volume = 0.3;
+            sound.onerror = () => {}; // Suppress errors if files don't exist
+        });
+        
+        // Initialize Enemies
+        function initEnemies() {
+            enemies = [];
+            const rows = 5;
+            const columns = 10;
+            const startX = 150;
+            const startY = 100;
+            const spacingX = 80;
+            const spacingY = 60;
+            
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < columns; col++) {
+                    enemies.push({
+                        x: startX + col * spacingX,
+                        y: startY + row * spacingY,
+                        width: 40,
+                        height: 40,
+                        color: '#FF0000',
+                        alive: true
+                    });
+                }
+            }
+        }
+        
+        // Reset Game
+        function resetGame() {
+            lives = 3;
+            level = 1;
+            score = 0;
+            player.x = 600 - 25;
+            player.y = 750;
+            playerBullets = [];
+            enemyBullets = [];
+            enemyDirection = 1;
+            enemyMoveTimer = 0;
+            enemyShootTimer = 0;
+            enemyMoveInterval = BASE_ENEMY_MOVE_INTERVAL;
+            enemyShootInterval = BASE_ENEMY_SHOOT_INTERVAL;
+            enemyHorizontalSpeed = BASE_ENEMY_HORIZONTAL_SPEED;
+            enemyShootProbability = BASE_ENEMY_SHOOT_PROBABILITY;
+            initEnemies();
+            gameState = 'playing';
+        }
+        
+        // Level Up
+        function levelUp() {
+            level++;
+            playerBullets = [];
+            enemyBullets = [];
+            enemyDirection = 1;
+            enemyMoveTimer = 0;
+            
+            // Increase enemy speed and shooting frequency with each level
+            enemyHorizontalSpeed += 15; // Increase movement speed
+            enemyMoveInterval = Math.max(10, enemyMoveInterval - 5); // Decrease interval (faster movement), minimum 10 frames
+            enemyShootInterval = Math.max(10, enemyShootInterval - 5); // Decrease shoot interval (more frequent), minimum 10 frames
+            enemyShootProbability = Math.min(0.95, enemyShootProbability + 0.05); // Increase shoot probability, max 95%
+            
+            initEnemies();
+        }
+        
+        // Event Listeners
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            
+            if (gameState === 'menu' && e.code === 'Space') {
+                resetGame();
+            }
+            
+            if (gameState === 'gameOver' && e.code === 'KeyR') {
+                resetGame();
+            }
+            
+            if (gameState === 'playing' && e.code === 'Space') {
+                shootPlayerBullet();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+        
+        // Shoot Player Bullet
+        function shootPlayerBullet() {
+            playerBullets.push({
+                x: player.x + player.width / 2 - 2.5,
+                y: player.y,
+                width: 5,
+                height: 20,
+                speed: 8,
+                color: '#00FF00'
+            });
+            
+            try {
+                audio.playerShoot.currentTime = 0;
+                audio.playerShoot.play().catch(() => {});
+            } catch (e) {}
+        }
+        
+        // Shoot Enemy Bullet
+        function shootEnemyBullet() {
+            const aliveEnemies = enemies.filter(e => e.alive);
+            if (aliveEnemies.length === 0) return;
+            
+            const randomEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+            
+            enemyBullets.push({
+                x: randomEnemy.x + randomEnemy.width / 2 - 2.5,
+                y: randomEnemy.y + randomEnemy.height,
+                width: 5,
+                height: 20,
+                speed: 3,
+                color: '#FFFF00'
+            });
+        }
+        
+        // Update Player
+        function updatePlayer() {
+            // Movement
+            if ((keys['KeyA'] || keys['ArrowLeft']) && player.x > 0) {
+                player.x -= player.speed;
+            }
+            if ((keys['KeyD'] || keys['ArrowRight']) && player.x < canvas.width - player.width) {
+                player.x += player.speed;
+            }
+        }
+        
+        // Update Bullets
+        function updateBullets() {
+            // Update player bullets
+            playerBullets = playerBullets.filter(bullet => {
+                bullet.y -= bullet.speed;
+                return bullet.y + bullet.height > 0;
+            });
+            
+            // Update enemy bullets
+            enemyBullets = enemyBullets.filter(bullet => {
+                bullet.y += bullet.speed;
+                return bullet.y < canvas.height;
+            });
+        }
+        
+        // Update Enemies
+        function updateEnemies() {
+            enemyMoveTimer++;
+            
+            if (enemyMoveTimer >= enemyMoveInterval) {
+                enemyMoveTimer = 0;
+                
+                // Check if any enemy hit the edge
+                let hitEdge = false;
+                const aliveEnemies = enemies.filter(e => e.alive);
+                
+                for (let enemy of aliveEnemies) {
+                    if ((enemyDirection > 0 && enemy.x + enemy.width + enemyHorizontalSpeed > canvas.width) ||
+                        (enemyDirection < 0 && enemy.x - enemyHorizontalSpeed < 0)) {
+                        hitEdge = true;
+                        break;
+                    }
+                }
+                
+                if (hitEdge) {
+                    // Move down and reverse direction
+                    enemies.forEach(enemy => {
+                        if (enemy.alive) {
+                            enemy.y += ENEMY_DESCENT_AMOUNT;
+                        }
+                    });
+                    enemyDirection *= -1;
+                } else {
+                    // Move horizontally
+                    enemies.forEach(enemy => {
+                        if (enemy.alive) {
+                            enemy.x += enemyDirection * enemyHorizontalSpeed;
+                        }
+                    });
+                }
+            }
+            
+            // Enemy shooting
+            enemyShootTimer++;
+            if (enemyShootTimer >= enemyShootInterval) {
+                enemyShootTimer = 0;
+                if (Math.random() < enemyShootProbability) {
+                    shootEnemyBullet();
+                }
+            }
+            
+            // Check if enemies reached bottom
+            const aliveEnemies = enemies.filter(e => e.alive);
+            for (let enemy of aliveEnemies) {
+                if (enemy.y + enemy.height > canvas.height - 100) {
+                    gameOver();
+                    return;
+                }
+            }
+        }
+        
+        // Collision Detection
+        function checkCollisions() {
+            // Player bullets vs enemies
+            for (let i = playerBullets.length - 1; i >= 0; i--) {
+                const bullet = playerBullets[i];
+                
+                for (let j = 0; j < enemies.length; j++) {
+                    const enemy = enemies[j];
+                    
+                    if (enemy.alive && 
+                        bullet.x < enemy.x + enemy.width &&
+                        bullet.x + bullet.width > enemy.x &&
+                        bullet.y < enemy.y + enemy.height &&
+                        bullet.y + bullet.height > enemy.y) {
+                        
+                        // Collision detected
+                        enemy.alive = false;
+                        playerBullets.splice(i, 1);
+                        score += 100;
+                        
+                        try {
+                            audio.enemyDie.currentTime = 0;
+                            audio.enemyDie.play().catch(() => {});
+                        } catch (e) {}
+                        
+                        break;
+                    }
+                }
+            }
+            
+            // Enemy bullets vs player
+            for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                const bullet = enemyBullets[i];
+                
+                if (bullet.x < player.x + player.width &&
+                    bullet.x + bullet.width > player.x &&
+                    bullet.y < player.y + player.height &&
+                    bullet.y + bullet.height > player.y) {
+                    
+                    // Player hit
+                    enemyBullets.splice(i, 1);
+                    lives--;
+                    
+                    try {
+                        audio.playerDie.currentTime = 0;
+                        audio.playerDie.play().catch(() => {});
+                    } catch (e) {}
+                    
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+            
+            // Check if all enemies destroyed
+            if (enemies.every(e => !e.alive)) {
+                levelUp();
+            }
+        }
+        
+        // Game Over
+        function gameOver() {
+            gameState = 'gameOver';
+        }
+        
+        // Draw Triangle (Player)
+        function drawTriangle(x, y, width, height, color) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x + width / 2, y);
+            ctx.lineTo(x, y + height);
+            ctx.lineTo(x + width, y + height);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        // Draw Rectangle
+        function drawRect(x, y, width, height, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, width, height);
+        }
+        
+        // Draw Text
+        function drawText(text, x, y, font, color, align = 'center') {
+            ctx.font = font;
+            ctx.fillStyle = color;
+            ctx.textAlign = align;
+            ctx.fillText(text, x, y);
+        }
+        
+        // Render Menu State
+        function renderMenu() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawText('SPACE INVADERS', canvas.width / 2, 300, 'bold 72px Arial', '#FF8000');
+            drawText('AI-Generated Game', canvas.width / 2, 350, '30px Arial', '#CCCCCC');
+            drawText('Press SPACE to Start', canvas.width / 2, 450, 'bold 40px Arial', '#00FF00');
+            drawText('Controls: AD/Arrow Keys to move, SPACE to shoot', canvas.width / 2, 550, '25px Arial', '#B3B3FF');
+            drawText('Kill them all! You have 3 lives.', canvas.width / 2, 600, '25px Arial', '#FFFF00');
+        }
+        
+        // Render Playing State
+        function renderPlaying() {
+            // Background
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // UI
+            drawText(`Lives: ${lives}`, 50, 50, 'bold 50px Arial', '#FFFF00', 'left');
+            drawText(`Level: ${level}`, canvas.width - 50, 50, 'bold 50px Arial', '#00FFFF', 'right');
+            drawText('SPACE INVADERS', canvas.width / 2, 50, 'bold 40px Arial', '#FF8000', 'center');
+            drawText(`Score: ${score}`, canvas.width / 2, 90, '30px Arial', '#FFFFFF', 'center');
+            
+            // Player
+            drawTriangle(player.x, player.y, player.width, player.height, player.color);
+            
+            // Player Bullets
+            playerBullets.forEach(bullet => {
+                drawRect(bullet.x, bullet.y, bullet.width, bullet.height, bullet.color);
+            });
+            
+            // Enemies
+            enemies.forEach(enemy => {
+                if (enemy.alive) {
+                    drawRect(enemy.x, enemy.y, enemy.width, enemy.height, enemy.color);
+                }
+            });
+            
+            // Enemy Bullets
+            enemyBullets.forEach(bullet => {
+                drawRect(bullet.x, bullet.y, bullet.width, bullet.height, bullet.color);
+            });
+        }
+        
+        // Render Game Over State
+        function renderGameOver() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawText('GAME OVER', canvas.width / 2, 300, 'bold 80px Arial', '#FF0000');
+            drawText(`Final Level: ${level}`, canvas.width / 2, 400, '40px Arial', '#FFFF00');
+            drawText(`Final Score: ${score}`, canvas.width / 2, 450, '40px Arial', '#FFFF00');
+            drawText('Press R to Restart', canvas.width / 2, 550, '30px Arial', '#00FF00');
+            
+            // Achievement message
+            let message = 'Good try! Practice makes perfect!';
+            if (level >= 10) {
+                message = "Amazing! You're an invaders master!";
+            } else if (level >= 5) {
+                message = "Great job! You're getting good at this!";
+            }
+            drawText(message, canvas.width / 2, 650, '25px Arial', '#B3B3FF');
+        }
+        
+        // Update Game
+        function update() {
+            if (gameState === 'playing') {
+                updatePlayer();
+                updateBullets();
+                updateEnemies();
+                checkCollisions();
+            }
+        }
+        
+        // Render Game
+        function render() {
+            switch (gameState) {
+                case 'menu':
+                    renderMenu();
+                    break;
+                case 'playing':
+                    renderPlaying();
+                    break;
+                case 'gameOver':
+                    renderGameOver();
+                    break;
+            }
+        }
+        
+        // Game Loop
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Initialize and Start
+        initEnemies();
+        gameLoop();
+    </script>
+</body>
+</html>
