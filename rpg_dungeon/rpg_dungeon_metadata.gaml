@@ -20,21 +20,25 @@ game:
 project:
   name: "rpg_dungeon"
   target: "web_browser"
-  structure:
-    - "index.html (single file with embedded CSS and JavaScript)"
-    - "assets/ (optional audio files)"
 
 implementation:
   approach: "single_file_html"
   dependencies: "none"
   canvas_id: "game-canvas"
 
+assets:
+  - type: "image"
+    id: "sprite_sheet"
+    path: "assets/pixelart.png"
+    tile_size: 16
+    grid_size: [16, 16]  # 16 rows, 16 columns
+
 window:
   width: 1000
   height: 700
   title: "RPG Dungeon"
 
-gameplayground:
+game_world:
   dungeon:
     grid_size: 40  # Each cell is 40x40 pixels
     rows: 15  # 600 pixels for dungeon
@@ -60,10 +64,17 @@ gameplayground:
 
 entities:
   player:
-    shape: "wizard_graphic_pixel_art"
+    type: "wizard"
+    sprite_sheet_spec:
+      sprite_positions:
+        right: { row: 6, col: 1 }
+        down: { row: 6, col: 2 }
+        up: { row: 6, col: 3 }
+        left: { row: 6, col: 4 }
+      size: { width: 16, height: 16 }
+      scale: 2  # Scale up 2x for better visibility
     size: 
       radius: 15
-    color: "#00FF00"  # Green
     spawn_position: 
       rule: "first_room_center"
     speed: 3  # pixels per frame
@@ -88,7 +99,17 @@ entities:
   enemies:
     types:
       - name: "Slime"
-        shape: "slime_pixel_art"
+        shape: "sprite_from_sheet"
+        rendering: "sprite_sheet"
+        sprite_sheet_spec:
+          type: "slime"
+          sprite_positions:
+            right: { row: 9, col: 17 }
+            down: { row: 9, col: 18 }
+            up: { row: 9, col: 19 }
+            left: { row: 9, col: 20 }
+          size: { width: 16, height: 16 }
+          scale: 1.5
         size: { radius: 12 }
         color: "#00FF00"
         health: 30
@@ -99,7 +120,17 @@ entities:
         gold_drop: { min: 5, max: 15 }
         spawn_chance: 0.5
       - name: "Skeleton"
-        shape: "skeleton_pixel_art"
+        shape: "sprite_from_sheet"
+        rendering: "sprite_sheet"
+        sprite_sheet_spec:
+          type: "skeleton"
+          sprite_positions:
+            right: { row: 9, col: 5 }
+            down: { row: 9, col: 6 }
+            up: { row: 9, col: 7 }
+            left: { row: 9, col: 8 }
+          size: { width: 16, height: 16 }
+          scale: 1.5
         size: { width: 20, height: 20 }
         color: "#CCCCCC"
         health: 50
@@ -110,7 +141,17 @@ entities:
         gold_drop: { min: 10, max: 25 }
         spawn_chance: 0.3
       - name: "Orc"
-        shape: "orc_pixel_art"
+        shape: "sprite_from_sheet"
+        rendering: "sprite_sheet"
+        sprite_sheet_spec:
+          type: "orc"
+          sprite_positions:
+            right: { row: 13, col: 7 }
+            down: { row: 13, col: 8 }
+            up: { row: 13, col: 9 }
+            left: { row: 13, col: 10 }
+          size: { width: 16, height: 16 }
+          scale: 1.5
         size: { width: 25, height: 25 }
         color: "#228B22"
         health: 80
