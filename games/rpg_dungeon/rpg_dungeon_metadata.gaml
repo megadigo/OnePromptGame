@@ -25,7 +25,7 @@ project:
 assets:
   - type: "image"
     id: "sprite_sheet"
-    path: "assets/pixelart.png"
+    path: "assets/tiny_dungeon_monsters.png"
     tile_size: 16
     grid_size: [16, 16]  # 16 rows, 16 columns
 
@@ -47,12 +47,21 @@ game_world:
       room_count: 6  # Minimum rooms per level
       room_min_size: 3  # Minimum room dimension in grid cells
       room_max_size: 7  # Maximum room dimension in grid cells
-      corridor_width: 1  # Width of corridors
+      corridor_width: 1  # Width of corridors in grid cells
       wall_color: "#2C1810"  # Dark brown walls
       floor_color: "#4A3728"  # Brown floor
       wall_render: "fillRect"
       door_count: 3  # Doors to unlock per level
-      door_color: "#8B4513"  # Saddle brown
+      door_color: "#8B4513"  # Saddle brown (locked), "#4A3728" (unlocked)
+      door_placement: "corridor_ends"  # Place doors at corridor ends only
+      door_width: 6  # Thin door width in pixels
+      door_orientation: "auto"  # Vertical bar for horizontal corridors, horizontal bar for vertical corridors
+      door_coverage: "full_corridor"  # Door must completely cover corridor width
+      door_requirements:
+        - "Must be placed in corridors (narrow passages with walls on both sides)"
+        - "Must be at corridor ends (near room entrances)"
+        - "Must be thin (6 pixels) and span full corridor width (40 pixels)"
+        - "Vertical bar blocks horizontal corridors, horizontal bar blocks vertical corridors"
       exit_stairs:
         color: "#FFD700"  # Gold stairs
         spawn_rule: "farthest_room_from_player"
@@ -64,10 +73,10 @@ entities:
     sprite_sheet_spec:
       sprite_sheet: "sprite_sheet"
       sprite_positions:
-        right: { row: 6, col: 1 }
-        down: { row: 6, col: 2 }
-        up: { row: 6, col: 3 }
-        left: { row: 6, col: 4 }
+        right: { row: 4, col: 9 }
+        down: { row: 4, col: 10 }
+        up: { row: 4, col: 11 }
+        left: { row: 4, col: 12 }
       size: { width: 16, height: 16 }
       scale: 2  # Scale up 2x for better visibility
     size: 
@@ -100,12 +109,12 @@ entities:
         sprite_sheet_spec:
           sprite_sheet: "sprite_sheet"
           sprite_positions:
-            right: { row: 9, col: 17 }
-            down: { row: 9, col: 18 }
-            up: { row: 9, col: 19 }
-            left: { row: 9, col: 20 }
+            right: { row: 16, col: 10 }
+            down: { row: 16, col: 11 }
+            up: { row: 16, col: 12 }
+            left: { row: 16, col: 13 }
             size: { width: 16, height: 16 }
-        scale: 1.5
+        scale: 2
         size: { radius: 12 }
         color: "#00FF00"
         health: 30
@@ -122,15 +131,15 @@ entities:
           attack_cooldown: 60  # frames 
       - name: "Deadly Skeleton"
         type: "skeletons"
+        sprite_sheet: "sprite_sheet"
         sprite_sheet_spec:
-          sprite_sheet: "sprite_sheet"
           sprite_positions:
-            right: { row: 9, col: 5 }
-            down: { row: 9, col: 6 }
-            up: { row: 9, col: 7 }
-            left: { row: 9, col: 8 }
+            right: { row: 9, col: 1 }
+            down: { row: 9, col: 2 }
+            up: { row: 9, col: 3 }
+            left: { row: 9, col: 4 }
           size: { width: 16, height: 16 }
-          scale: 1.5
+          scale: 2
         size: { width: 20, height: 20 }
         color: "#CCCCCC"
         health: 50
@@ -147,15 +156,15 @@ entities:
           attack_cooldown: 60  # frames 
       - name: "Enourmous Orc"
         type: "orcs"
+        sprite_sheet: "sprite_sheet"
         sprite_sheet_spec:
-          sprite_sheet: "sprite_sheet"
           sprite_positions:
-            right: { row: 13, col: 7 }
-            down: { row: 13, col: 8 }
-            up: { row: 13, col: 9 }
-            left: { row: 13, col: 10 }
-          size: { width: 16, height: 16 }
-          scale: 1.5
+            right: { row: 7, col: 1 }
+            down: { row: 7, col: 2 }
+            up: { row: 7, col: 3 }
+            left: { row: 7, col: 4 }
+          size: { width: 7, height: 16 }
+          scale: 3
         size: { width: 25, height: 25 }
         color: "#228B22"
         health: 80
@@ -331,10 +340,18 @@ game_states:
       - "player_vs_enemies"
       - "player_vs_items"
       - "player_vs_chests"
-      - "player_vs_doors"
+      - "player_vs_doors"  # Thin door collision: orientation-aware, 6px bar, full corridor coverage
       - "player_vs_exit"
       - "projectile_vs_enemies"
       - "enemy_projectile_vs_player"
+    
+    collision_details:
+      player_vs_doors:
+        description: "Thin door collision detection with orientation awareness"
+        implementation: "Check proximity to door center with orientation-aware collision"
+        horizontal_doors: "Vertical thin bar (6px wide × 40px tall)"
+        vertical_doors: "Horizontal thin bar (40px wide × 6px tall)"
+        collision_check: "Distance < 5px from center line + within corridor bounds"
 
   levelUp:
     duration: 90  # frames
@@ -528,9 +545,25 @@ prompt_instruction: |
   
   DUNGEON SYSTEM:
   - Procedural generation using Binary Space Partitioning
-  - Rooms connected by corridors
+  - Rooms connected by corridors (1 grid cell wide)
   - Walls, floors, doors, and exit stairs
   - Grid-based collision detection
+  
+  DOOR SYSTEM (CRITICAL):
+  - Doors MUST be placed at corridor ends (near room entrances)
+  - Doors MUST be thin (6 pixels wide) and span the full corridor width (40 pixels)
+  - Horizontal corridors: Use vertical thin bar (6px wide × 40px tall)
+  - Vertical corridors: Use horizontal thin bar (40px wide × 6px tall)
+  - Door placement algorithm:
+    1. Find floor cells in corridors (walls on parallel sides, floor on perpendicular sides)
+    2. Verify it's at a corridor end (near room entrance or corridor terminus)
+    3. Store door with orientation: 'horizontal' or 'vertical'
+  - Collision detection:
+    1. Check player distance from door center line (< 5px threshold)
+    2. Check perpendicular position within corridor bounds (< corridor_width/2)
+    3. Block movement if both conditions met and door is locked
+  - Rendering: Draw thin rectangle at door center, oriented perpendicular to corridor direction
+  - Color: #8B4513 (locked brown), #4A3728 (unlocked/opened)
   
   ENTITIES AND BEHAVIOR:
   - Player: WASD/Arrow controls, ranged combat
