@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-10-23T11:14:40.032Z",
+  "timestamp": "2025-10-23T11:34:25.714Z",
   "projectRoot": "C:\\Git\\OnePromptGame",
   "filesValidated": 3,
   "results": [
@@ -13,42 +13,13 @@
     },
     {
       "file": "games\\space_invader\\space_invader_metadata.gaml",
-      "valid": false,
-      "errors": [
-        {
-          "path": "/entities/player/spawn_position",
-          "message": "must match exactly one schema in oneOf",
-          "params": {
-            "passingSchemas": [
-              0,
-              1
-            ]
-          }
-        },
-        {
-          "path": "/entities/enemies",
-          "message": "must match exactly one schema in oneOf",
-          "params": {
-            "passingSchemas": [
-              0,
-              1
-            ]
-          }
-        },
-        {
-          "path": "/gameplay_systems/player_movement/keys",
-          "message": "must be object",
-          "params": {
-            "type": "object"
-          }
-        }
-      ]
+      "valid": true
     }
   ],
   "summary": {
     "total": 3,
-    "valid": 2,
-    "invalid": 1,
-    "allValid": false
+    "valid": 3,
+    "invalid": 0,
+    "allValid": true
   }
 }

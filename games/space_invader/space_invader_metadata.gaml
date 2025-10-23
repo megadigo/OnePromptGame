@@ -35,32 +35,39 @@ window:
 
 entities:
   player:
-    shape: "triangle"
-    size: 
+    name: "Player Ship"
+    type: "player"
+    sprite:
+      color: "#0080FF"  # Blue
       width: 50
       height: 50
-    color: "#0080FF"  # Blue
-    spawn_position: 
+    position:
       x: 600  # Center horizontally (1200/2)
       y: 750  # Near bottom (800-50)
-    speed: 5  # Canvas pixels per frame
-    bounds:
-      min_x: 0
-      max_x: 1150  # canvas.width - player.width
+      spawn: "fixed"
+    stats:
+      speed: 5  # Canvas pixels per frame
+      bounds:
+        min_x: 0
+        max_x: 1150  # canvas.width - player.width
     
-  enemies:
-    count: 50  # 5 rows x 10 columns
-    formation:
+  invaders:
+    name: "Invader Formation"
+    type: "enemy_formation"
+    sprite:
+      color: "#FF0000"  # Red
+      width: 40
+      height: 40
+    position:
+      spawn: "procedural"
+    stats:
+      count: 50  # 5 rows x 10 columns
       rows: 5
       columns: 10
       start_x: 150
       start_y: 100
       spacing_x: 80
       spacing_y: 60
-    size:
-      width: 40
-      height: 40
-    color: "#FF0000"  # Red
     movement:
       horizontal_speed: 15  # pixels per move (increased from 10)
       descent_amount: 20    # pixels down when hitting edge
@@ -231,12 +238,12 @@ game_states:
 gameplay_systems:
   player_movement:
     keys: 
-    left: ["KeyA", "ArrowLeft"]
-    right: ["KeyD", "ArrowRight"]
-  speed: 5  # pixels per frame
-  boundaries:
-    left: 0
-    right: "canvas.width - player.width"
+      left: ["KeyA", "ArrowLeft"]
+      right: ["KeyD", "ArrowRight"]
+    speed: 5  # pixels per frame
+    boundaries:
+      left: 0
+      right: "canvas.width - player.width"
 
   player_shooting:
     key: "Space"
