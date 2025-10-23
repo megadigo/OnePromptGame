@@ -226,7 +226,6 @@ resources:
     keydown_events: true
     keyup_events: true
     supported_keys: ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight", "Space", "KeyE", "KeyQ", "KeyR"]
-    mouse_events: ["click"]
 
 game_states:
   menu:

@@ -230,12 +230,14 @@ game_states:
 
 gameplay_systems:
   player_movement:
-    keys: ["KeyA", "KeyD", "ArrowLeft", "ArrowRight"]
-    speed: 5  # pixels per frame
-    boundaries:
-      left: 0
-      right: "canvas.width - player.width"
-  
+    keys: 
+    left: ["KeyA", "ArrowLeft"]
+    right: ["KeyD", "ArrowRight"]
+  speed: 5  # pixels per frame
+  boundaries:
+    left: 0
+    right: "canvas.width - player.width"
+
   player_shooting:
     key: "Space"
     bullet_spawn_offset:
