@@ -79,7 +79,7 @@ GAML is a comprehensive metadata specification format (YAML-based) that describe
 ### Schema
 All GAML files conform to the official schema:  
 `https://github.com/megadigo/gaml-schema/blob/main/v0.0.1/gaml-schema.json`
-
+A validator is included in the official schema repository.
 ---
 
 ## 🚀 Quick Start
