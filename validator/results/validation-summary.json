@@ -1,0 +1,25 @@
+{
+  "timestamp": "2025-10-24T22:32:04.068Z",
+  "projectRoot": "C:\\Git\\gaml-schema",
+  "filesValidated": 3,
+  "results": [
+    {
+      "file": "v0.0.1\\examples\\pacman_metadata.gaml",
+      "valid": true
+    },
+    {
+      "file": "v0.0.1\\examples\\rpg_dungeon_metadata.gaml",
+      "valid": true
+    },
+    {
+      "file": "v0.0.1\\examples\\space_invader_metadata.gaml",
+      "valid": true
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "valid": 3,
+    "invalid": 0,
+    "allValid": true
+  }
+}
