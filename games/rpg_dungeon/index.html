@@ -20,657 +20,1111 @@
             font-family: Arial, sans-serif;
         }
         
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
+        
         #game-canvas {
-            border: 2px solid #333;
             display: block;
             background: #000;
             image-rendering: pixelated;
-            image-rendering: -webkit-optimize-contrast;
             image-rendering: crisp-edges;
         }
     </style>
 </head>
 <body>
-    <canvas id="game-canvas" width="1000" height="700"></canvas>
+    <div id="gameContainer">
+        <canvas id="game-canvas" width="1000" height="700"></canvas>
+    </div>
 
     <script>
-        const CANVAS_WIDTH = 1000;
-        const CANVAS_HEIGHT = 700;
+        // Canvas setup
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game constants
         const GRID_SIZE = 40;
         const DUNGEON_ROWS = 15;
         const DUNGEON_COLS = 20;
-        const DUNGEON_OFFSET_X = 20;
-        const DUNGEON_OFFSET_Y = 50;
+        const OFFSET_X = 20;
+        const OFFSET_Y = 50;
         const TILE_SIZE = 16;
-        
-        const canvas = document.getElementById('game-canvas');
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
-        
-        // Load sprite sheet
-        const spriteSheet = new Image();
-        spriteSheet.src = 'assets/tiny_dungeon_monsters.png';
-        let spriteLoaded = false;
-        spriteSheet.onload = () => { spriteLoaded = true; console.log('Sprites loaded'); };
-        spriteSheet.onerror = () => console.error('Failed to load sprites');
+        const SPRITE_SCALE = 2;
+        const MAX_FLOOR = 10;
         
         // Game state
         let gameState = 'menu';
+        let keys = {};
         let floor = 1;
+        let dungeon = [];
+        let rooms = [];
+        let player = null;
+        let enemies = [];
+        let projectiles = [];
+        let items = [];
+        let chests = [];
+        let exitStairs = null;
         let levelUpTimer = 0;
+        let spriteSheet = null;
+        let spriteSheetLoaded = false;
         
-        // Input
-        const keys = {};
-        const pressed = {};
-        
-        // Entities
-        let player, enemies, items, chests, doors, stairs, projectiles, enemyProj, dungeon;
-        
-        function createPlayer() {
-            return {
-                x: 0, y: 0, radius: 15, speed: 3, dir: 'down',
-                stats: { maxHP: 100, hp: 100, atk: 10, def: 5, lvl: 1, exp: 0, expNext: 100 },
-                inv: { gold: 0, potions: 3, keys: 0 },
-                atkCD: 0, maxAtkCD: 30
+        // Load sprite sheet
+        const loadSpriteSheet = () => {
+            spriteSheet = new Image();
+            spriteSheet.src = 'assets/tiny_dungeon_monsters.png';
+            spriteSheet.onload = () => {
+                spriteSheetLoaded = true;
             };
-        }
-        
-        const enemyTypes = {
-            slime: { name: "Slime", row: 16, cols: [10,11,12,13], scale: 2, r: 12, col: "#0F0",
-                     hp: 30, atk: 5, def: 2, spd: 1, exp: 20, gold: [5,15], range: 50, chase: false, atkRange: 30, atkCD: 60 },
-            skeleton: { name: "Skeleton", row: 9, cols: [1,2,3,4], scale: 2, r: 12, col: "#CCC",
-                        hp: 50, atk: 8, def: 4, spd: 1.5, exp: 35, gold: [10,25], range: 100, chase: true, atkRange: 20, atkCD: 60 },
-            orc: { name: "Orc", row: 13, cols: [6,7,8,9], scale: 2, r: 15, col: "#282",
-                   hp: 80, atk: 12, def: 6, spd: 1.2, exp: 50, gold: [20,40], range: 200, chase: true, atkRange: 40, atkCD: 60 }
+            spriteSheet.onerror = () => {
+                console.warn('Sprite sheet not found, using fallback rendering');
+                spriteSheetLoaded = false;
+            };
         };
         
-        // BSP Dungeon Gen
-        class Room {
-            constructor(x, y, w, h) {
-                this.x = x; this.y = y; this.w = w; this.h = h;
-                this.cx = x + Math.floor(w/2); this.cy = y + Math.floor(h/2);
-            }
-        }
-        
-        class BSP {
-            constructor(x, y, w, h) {
-                this.x = x; this.y = y; this.w = w; this.h = h;
-                this.l = null; this.r = null; this.room = null;
+        // Player class
+        class Player {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 12;
+                this.speed = 3;
+                this.maxHealth = 100;
+                this.health = 100;
+                this.attack = 20;
+                this.defense = 5;
+                this.level = 1;
+                this.experience = 0;
+                this.experienceToNext = 100;
+                this.gold = 0;
+                this.potions = 3;
+                this.attackCooldown = 0;
+                this.attackCooldownMax = 30;
+                this.facing = 'down';
+                this.spritePos = { row: 3, col: 9 };
             }
             
-            split() {
-                if (this.l || this.r) return false;
-                const horiz = Math.random() > 0.5;
-                const max = (horiz ? this.h : this.w) - 6;
-                if (max <= 6) return false;
-                const s = Math.floor(Math.random() * (max - 6)) + 6;
-                if (horiz) {
-                    this.l = new BSP(this.x, this.y, this.w, s);
-                    this.r = new BSP(this.x, this.y + s, this.w, this.h - s);
-                } else {
-                    this.l = new BSP(this.x, this.y, s, this.h);
-                    this.r = new BSP(this.x + s, this.y, this.w - s, this.h);
+            update() {
+                // Movement
+                let dx = 0;
+                let dy = 0;
+                
+                if (keys['KeyW'] || keys['ArrowUp']) {
+                    dy -= this.speed;
+                    this.facing = 'up';
+                    this.spritePos = { row: 3, col: 10 };
                 }
-                return true;
+                if (keys['KeyS'] || keys['ArrowDown']) {
+                    dy += this.speed;
+                    this.facing = 'down';
+                    this.spritePos = { row: 3, col: 9 };
+                }
+                if (keys['KeyA'] || keys['ArrowLeft']) {
+                    dx -= this.speed;
+                    this.facing = 'left';
+                    this.spritePos = { row: 3, col: 11 };
+                }
+                if (keys['KeyD'] || keys['ArrowRight']) {
+                    dx += this.speed;
+                    this.facing = 'right';
+                    this.spritePos = { row: 3, col: 8 };
+                }
+                
+                // Try to move and check collision
+                const newX = this.x + dx;
+                const newY = this.y + dy;
+                
+                if (!this.checkWallCollision(newX, this.y)) {
+                    this.x = newX;
+                }
+                if (!this.checkWallCollision(this.x, newY)) {
+                    this.y = newY;
+                }
+                
+                // Attack
+                if (this.attackCooldown > 0) {
+                    this.attackCooldown--;
+                }
+                
+                if (keys['Space'] && this.attackCooldown === 0) {
+                    this.shoot();
+                    this.attackCooldown = this.attackCooldownMax;
+                }
+                
+                // Use potion
+                if (keys['KeyE']) {
+                    this.usePotion();
+                    keys['KeyE'] = false; // Prevent multiple uses
+                }
+                
+                // Interact with chests
+                if (keys['KeyQ']) {
+                    this.interact();
+                    keys['KeyQ'] = false;
+                }
+                
+                // Check item pickups
+                this.checkItemPickup();
+                
+                // Check exit stairs
+                this.checkExitStairs();
             }
             
-            makeRoom() {
-                if (this.l || this.r) {
-                    if (this.l) this.l.makeRoom();
-                    if (this.r) this.r.makeRoom();
-                } else {
-                    const rw = Math.floor(Math.random() * 5) + 3;
-                    const rh = Math.floor(Math.random() * 5) + 3;
-                    const rx = this.x + Math.floor(Math.random() * (this.w - rw));
-                    const ry = this.y + Math.floor(Math.random() * (this.h - rh));
-                    this.room = new Room(rx, ry, rw, rh);
+            checkWallCollision(x, y) {
+                const gridX = Math.floor((x - OFFSET_X) / GRID_SIZE);
+                const gridY = Math.floor((y - OFFSET_Y) / GRID_SIZE);
+                
+                if (gridX < 0 || gridX >= DUNGEON_COLS || gridY < 0 || gridY >= DUNGEON_ROWS) {
+                    return true;
+                }
+                
+                return dungeon[gridY][gridX] === 1;
+            }
+            
+            shoot() {
+                let dx = 0;
+                let dy = 0;
+                
+                switch(this.facing) {
+                    case 'up': dy = -1; break;
+                    case 'down': dy = 1; break;
+                    case 'left': dx = -1; break;
+                    case 'right': dx = 1; break;
+                }
+                
+                const damage = Math.floor(this.attack * (1 + this.level * 0.1));
+                projectiles.push(new Projectile(this.x, this.y, dx, dy, 8, damage, 'player'));
+            }
+            
+            usePotion() {
+                if (this.potions > 0 && this.health < this.maxHealth) {
+                    this.health = Math.min(this.health + 50, this.maxHealth);
+                    this.potions--;
                 }
             }
             
-            getRoom() {
-                if (this.room) return this.room;
-                const lr = this.l ? this.l.getRoom() : null;
-                const rr = this.r ? this.r.getRoom() : null;
-                if (!lr && !rr) return null;
-                if (!rr) return lr;
-                if (!lr) return rr;
-                return Math.random() > 0.5 ? lr : rr;
-            }
-        }
-        
-        function genDungeon() {
-            const grid = Array(DUNGEON_ROWS).fill(0).map(() => Array(DUNGEON_COLS).fill(0));
-            const root = new BSP(0, 0, DUNGEON_COLS, DUNGEON_ROWS);
-            const rooms = [];
-            
-            let nodes = [root];
-            for (let i = 0; i < 4; i++) {
-                const newNodes = [];
-                for (const n of nodes) {
-                    if (n.split()) { newNodes.push(n.l, n.r); } else { newNodes.push(n); }
-                }
-                nodes = newNodes;
-            }
-            
-            root.makeRoom();
-            
-            function collect(n) {
-                if (n.room) rooms.push(n.room);
-                if (n.l) collect(n.l);
-                if (n.r) collect(n.r);
-            }
-            collect(root);
-            
-            for (const rm of rooms) {
-                for (let y = rm.y; y < rm.y + rm.h; y++) {
-                    for (let x = rm.x; x < rm.x + rm.w; x++) {
-                        if (x >= 0 && x < DUNGEON_COLS && y >= 0 && y < DUNGEON_ROWS) {
-                            grid[y][x] = 1;
+            interact() {
+                for (let chest of chests) {
+                    if (!chest.opened) {
+                        const dist = Math.hypot(this.x - chest.x, this.y - chest.y);
+                        if (dist < 40) {
+                            chest.open(this);
                         }
                     }
                 }
             }
             
-            for (let i = 0; i < rooms.length - 1; i++) {
-                const r1 = rooms[i], r2 = rooms[i + 1];
-                if (Math.random() > 0.5) {
-                    for (let x = Math.min(r1.cx, r2.cx); x <= Math.max(r1.cx, r2.cx); x++) {
-                        if (x >= 0 && x < DUNGEON_COLS && r1.cy >= 0 && r1.cy < DUNGEON_ROWS) grid[r1.cy][x] = 1;
+            checkItemPickup() {
+                for (let i = items.length - 1; i >= 0; i--) {
+                    const item = items[i];
+                    const dist = Math.hypot(this.x - item.x, this.y - item.y);
+                    if (dist < this.radius + item.radius) {
+                        if (item.type === 'health_potion') {
+                            this.potions++;
+                            items.splice(i, 1);
+                        }
                     }
-                    for (let y = Math.min(r1.cy, r2.cy); y <= Math.max(r1.cy, r2.cy); y++) {
-                        if (r2.cx >= 0 && r2.cx < DUNGEON_COLS && y >= 0 && y < DUNGEON_ROWS) grid[y][r2.cx] = 1;
+                }
+            }
+            
+            checkExitStairs() {
+                if (exitStairs && enemies.length === 0) {
+                    const dist = Math.hypot(this.x - exitStairs.x, this.y - exitStairs.y);
+                    if (dist < 50) {
+                        if (floor >= MAX_FLOOR) {
+                            gameState = 'victory';
+                        } else {
+                            floor++;
+                            generateDungeon();
+                        }
+                    }
+                }
+            }
+            
+            takeDamage(damage) {
+                const actualDamage = Math.max(1, damage - this.defense);
+                this.health -= actualDamage;
+                if (this.health <= 0) {
+                    this.health = 0;
+                    gameState = 'gameOver';
+                }
+            }
+            
+            gainExperience(exp) {
+                this.experience += exp;
+                if (this.experience >= this.experienceToNext) {
+                    this.levelUp();
+                }
+            }
+            
+            levelUp() {
+                this.level++;
+                this.experience -= this.experienceToNext;
+                this.experienceToNext = 100 * this.level;
+                this.maxHealth += 10;
+                this.health = this.maxHealth; // Full heal on level up
+                this.attack += 2;
+                this.defense += 1;
+                gameState = 'levelUp';
+                levelUpTimer = 90;
+            }
+            
+            draw() {
+                if (spriteSheetLoaded) {
+                    const sx = this.spritePos.col * TILE_SIZE;
+                    const sy = this.spritePos.row * TILE_SIZE;
+                    const size = TILE_SIZE * SPRITE_SCALE;
+                    ctx.drawImage(spriteSheet, sx, sy, TILE_SIZE, TILE_SIZE,
+                                this.x - size/2, this.y - size/2, size, size);
+                } else {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+        
+        // Enemy class
+        class Enemy {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.radius = 10;
+                this.type = type;
+                this.facing = 'down';
+                
+                const floorMultiplier = 1 + (floor - 1) * 0.2;
+                
+                if (type === 'slime') {
+                    this.name = 'Acid Slime';
+                    this.health = Math.floor(30 * floorMultiplier);
+                    this.maxHealth = this.health;
+                    this.attack = Math.floor(5 * (1 + (floor - 1) * 0.15));
+                    this.defense = 2;
+                    this.speed = 0.5;
+                    this.experience = 20;
+                    this.goldDrop = { min: 5, max: 15 };
+                    this.color = '#00FF00';
+                    this.detectionRange = 200;
+                    this.attackRange = 15;
+                    this.spritePos = { row: 16, col: 9 };
+                } else if (type === 'skeleton') {
+                    this.name = 'Deadly Skeleton';
+                    this.health = Math.floor(50 * floorMultiplier);
+                    this.maxHealth = this.health;
+                    this.attack = Math.floor(8 * (1 + (floor - 1) * 0.15));
+                    this.defense = 4;
+                    this.speed = 1.5;
+                    this.experience = 35;
+                    this.goldDrop = { min: 10, max: 25 };
+                    this.color = '#CCCCCC';
+                    this.detectionRange = 200;
+                    this.attackRange = 20;
+                    this.spritePos = { row: 8, col: 5 };
+                } else { // orc
+                    this.name = 'Enormous Orc';
+                    this.health = Math.floor(80 * floorMultiplier);
+                    this.maxHealth = this.health;
+                    this.attack = Math.floor(12 * (1 + (floor - 1) * 0.15));
+                    this.defense = 6;
+                    this.speed = 1.2;
+                    this.experience = 50;
+                    this.goldDrop = { min: 20, max: 40 };
+                    this.color = '#228B22';
+                    this.detectionRange = 200;
+                    this.attackRange = 40;
+                    this.spritePos = { row: 6, col: 1 };
+                }
+                
+                this.attackCooldown = 0;
+                this.attackCooldownMax = 60;
+            }
+            
+            update() {
+                if (!player) return;
+                
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const dist = Math.hypot(dx, dy);
+                
+                // Update facing direction
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    if (dx > 0) {
+                        this.facing = 'right';
+                        if (this.type === 'slime') this.spritePos.col = 8;
+                        else if (this.type === 'skeleton') this.spritePos.col = 4;
+                        else this.spritePos.col = 0;
+                    } else {
+                        this.facing = 'left';
+                        if (this.type === 'slime') this.spritePos.col = 11;
+                        else if (this.type === 'skeleton') this.spritePos.col = 7;
+                        else this.spritePos.col = 3;
                     }
                 } else {
-                    for (let y = Math.min(r1.cy, r2.cy); y <= Math.max(r1.cy, r2.cy); y++) {
-                        if (r1.cx >= 0 && r1.cx < DUNGEON_COLS && y >= 0 && y < DUNGEON_ROWS) grid[y][r1.cx] = 1;
-                    }
-                    for (let x = Math.min(r1.cx, r2.cx); x <= Math.max(r1.cx, r2.cx); x++) {
-                        if (x >= 0 && x < DUNGEON_COLS && r2.cy >= 0 && r2.cy < DUNGEON_ROWS) grid[r2.cy][x] = 1;
-                    }
-                }
-            }
-            
-            return { grid, rooms };
-        }
-        
-        function findDoors(grid) {
-            const doorPos = [];
-            for (let y = 1; y < DUNGEON_ROWS - 1; y++) {
-                for (let x = 1; x < DUNGEON_COLS - 1; x++) {
-                    if (grid[y][x] === 1) {
-                        const t = grid[y-1][x], b = grid[y+1][x], l = grid[y][x-1], r = grid[y][x+1];
-                        if (l === 0 && r === 0 && t === 1 && b === 1) {
-                            const tt = y > 1 ? grid[y-2][x] : 0, bb = y < DUNGEON_ROWS - 2 ? grid[y+2][x] : 0;
-                            if ((tt === 0 || bb === 0) && doorPos.length < 3) doorPos.push({ x, y, ori: 'v' });
-                        } else if (t === 0 && b === 0 && l === 1 && r === 1) {
-                            const ll = x > 1 ? grid[y][x-2] : 0, rr = x < DUNGEON_COLS - 2 ? grid[y][x+2] : 0;
-                            if ((ll === 0 || rr === 0) && doorPos.length < 3) doorPos.push({ x, y, ori: 'h' });
-                        }
+                    if (dy > 0) {
+                        this.facing = 'down';
+                        if (this.type === 'slime') this.spritePos.col = 9;
+                        else if (this.type === 'skeleton') this.spritePos.col = 5;
+                        else this.spritePos.col = 1;
+                    } else {
+                        this.facing = 'up';
+                        if (this.type === 'slime') this.spritePos.col = 10;
+                        else if (this.type === 'skeleton') this.spritePos.col = 6;
+                        else this.spritePos.col = 2;
                     }
                 }
-            }
-            return doorPos;
-        }
-        
-        function init() {
-            player = createPlayer();
-            enemies = []; items = []; chests = []; doors = []; projectiles = []; enemyProj = []; stairs = null;
-            floor = 1;
-            genLevel();
-        }
-        
-        function genLevel() {
-            const dg = genDungeon();
-            dungeon = dg.grid;
-            const rooms = dg.rooms;
-            
-            enemies = []; items = []; chests = []; doors = []; projectiles = []; enemyProj = []; stairs = null;
-            
-            player.x = DUNGEON_OFFSET_X + rooms[0].cx * GRID_SIZE;
-            player.y = DUNGEON_OFFSET_Y + rooms[0].cy * GRID_SIZE;
-            
-            const dps = findDoors(dungeon);
-            for (let i = 0; i < Math.min(3, dps.length); i++) {
-                doors.push({
-                    gx: dps[i].x, gy: dps[i].y,
-                    x: DUNGEON_OFFSET_X + dps[i].x * GRID_SIZE + GRID_SIZE/2,
-                    y: DUNGEON_OFFSET_Y + dps[i].y * GRID_SIZE + GRID_SIZE/2,
-                    ori: dps[i].ori, locked: true
-                });
-            }
-            
-            for (let i = 0; i < 3; i++) {
-                const rm = rooms[Math.floor(Math.random() * (rooms.length - 1)) + 1];
-                items.push({ type: 'key', x: DUNGEON_OFFSET_X + (rm.x + Math.random() * rm.w) * GRID_SIZE,
-                            y: DUNGEON_OFFSET_Y + (rm.y + Math.random() * rm.h) * GRID_SIZE, r: 6, col: "#FD0" });
-            }
-            
-            for (let i = 1; i < rooms.length; i++) {
-                const rm = rooms[i];
-                const ec = Math.floor(Math.random() * 3) + 1;
-                for (let j = 0; j < ec; j++) {
-                    const types = ['slime', 'skeleton', 'orc'];
-                    const type = types[Math.floor(Math.random() * types.length)];
-                    const t = enemyTypes[type];
-                    enemies.push({
-                        ...t, x: DUNGEON_OFFSET_X + (rm.x + Math.random() * rm.w) * GRID_SIZE,
-                        y: DUNGEON_OFFSET_Y + (rm.y + Math.random() * rm.h) * GRID_SIZE,
-                        maxHP: t.hp * Math.pow(1.2, floor - 1), hp: t.hp * Math.pow(1.2, floor - 1),
-                        atk: t.atk * Math.pow(1.15, floor - 1), dir: 'down', timer: 0
-                    });
-                }
-            }
-            
-            for (let i = 0; i < Math.floor(Math.random() * 3) + 2; i++) {
-                const rm = rooms[Math.floor(Math.random() * (rooms.length - 1)) + 1];
-                chests.push({ x: DUNGEON_OFFSET_X + (rm.x + Math.random() * rm.w) * GRID_SIZE,
-                             y: DUNGEON_OFFSET_Y + (rm.y + Math.random() * rm.h) * GRID_SIZE,
-                             w: 20, h: 15, opened: false, gold: Math.floor(Math.random() * 70) + 30,
-                             potion: Math.random() < 0.5 });
-            }
-            
-            for (let i = 0; i < 2; i++) {
-                const rm = rooms[Math.floor(Math.random() * (rooms.length - 1)) + 1];
-                items.push({ type: 'potion', x: DUNGEON_OFFSET_X + (rm.x + Math.random() * rm.w) * GRID_SIZE,
-                            y: DUNGEON_OFFSET_Y + (rm.y + Math.random() * rm.h) * GRID_SIZE, r: 8, col: "#F00" });
-            }
-        }
-        
-        function checkStairs() {
-            if (enemies.length === 0 && !stairs) {
-                const tiles = [];
-                for (let y = 0; y < DUNGEON_ROWS; y++) {
-                    for (let x = 0; x < DUNGEON_COLS; x++) {
-                        if (dungeon[y][x] === 1) {
-                            tiles.push({ x: x * GRID_SIZE + DUNGEON_OFFSET_X, y: y * GRID_SIZE + DUNGEON_OFFSET_Y });
-                        }
+                
+                // Chase player if in detection range
+                if (dist < this.detectionRange && dist > this.attackRange) {
+                    const moveX = (dx / dist) * this.speed;
+                    const moveY = (dy / dist) * this.speed;
+                    
+                    const newX = this.x + moveX;
+                    const newY = this.y + moveY;
+                    
+                    if (!this.checkWallCollision(newX, this.y)) {
+                        this.x = newX;
+                    }
+                    if (!this.checkWallCollision(this.x, newY)) {
+                        this.y = newY;
                     }
                 }
-                let maxD = 0, farthest = null;
-                for (const t of tiles) {
-                    const d = Math.hypot(t.x - player.x, t.y - player.y);
-                    if (d > maxD) { maxD = d; farthest = t; }
+                
+                // Attack player
+                if (this.attackCooldown > 0) {
+                    this.attackCooldown--;
                 }
-                if (farthest) stairs = { x: farthest.x + GRID_SIZE/2, y: farthest.y + GRID_SIZE/2, w: 30, h: 30 };
+                
+                if (dist < this.attackRange && this.attackCooldown === 0) {
+                    player.takeDamage(this.attack);
+                    this.attackCooldown = this.attackCooldownMax;
+                }
+                
+                // Ranged attack for skeletons and orcs
+                if ((this.type === 'skeleton' || this.type === 'orc') && 
+                    dist < 200 && dist > 50 && this.attackCooldown === 0) {
+                    const projDx = dx / dist;
+                    const projDy = dy / dist;
+                    projectiles.push(new Projectile(this.x, this.y, projDx, projDy, 5, this.attack, 'enemy'));
+                    this.attackCooldown = this.attackCooldownMax;
+                }
             }
-        }
-        
-        function isWall(x, y) {
-            const gx = Math.floor((x - DUNGEON_OFFSET_X) / GRID_SIZE);
-            const gy = Math.floor((y - DUNGEON_OFFSET_Y) / GRID_SIZE);
-            if (gx < 0 || gx >= DUNGEON_COLS || gy < 0 || gy >= DUNGEON_ROWS) return true;
-            return dungeon[gy][gx] === 0;
-        }
-        
-        function checkDoor(x, y) {
-            for (const d of doors) {
-                if (!d.locked) continue;
-                if (d.ori === 'h') {
-                    if (Math.abs(x - d.x) < 5 && Math.abs(y - d.y) < GRID_SIZE/2) return true;
+            
+            checkWallCollision(x, y) {
+                const gridX = Math.floor((x - OFFSET_X) / GRID_SIZE);
+                const gridY = Math.floor((y - OFFSET_Y) / GRID_SIZE);
+                
+                if (gridX < 0 || gridX >= DUNGEON_COLS || gridY < 0 || gridY >= DUNGEON_ROWS) {
+                    return true;
+                }
+                
+                return dungeon[gridY][gridX] === 1;
+            }
+            
+            takeDamage(damage) {
+                const actualDamage = Math.max(1, damage - this.defense);
+                this.health -= actualDamage;
+                if (this.health <= 0) {
+                    this.die();
+                }
+            }
+            
+            die() {
+                // Drop gold
+                const gold = Math.floor(Math.random() * (this.goldDrop.max - this.goldDrop.min + 1)) + this.goldDrop.min;
+                player.gold += gold;
+                
+                // Grant experience
+                player.gainExperience(this.experience);
+                
+                // Chance to drop potion
+                if (Math.random() < 0.3) {
+                    items.push(new Item(this.x, this.y, 'health_potion'));
+                }
+                
+                // Remove from enemies array
+                const index = enemies.indexOf(this);
+                if (index > -1) {
+                    enemies.splice(index, 1);
+                }
+            }
+            
+            draw() {
+                if (spriteSheetLoaded) {
+                    const sx = this.spritePos.col * TILE_SIZE;
+                    const sy = this.spritePos.row * TILE_SIZE;
+                    const size = TILE_SIZE * SPRITE_SCALE;
+                    ctx.drawImage(spriteSheet, sx, sy, TILE_SIZE, TILE_SIZE,
+                                this.x - size/2, this.y - size/2, size, size);
                 } else {
-                    if (Math.abs(y - d.y) < 5 && Math.abs(x - d.x) < GRID_SIZE/2) return true;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
                 }
-            }
-            return false;
-        }
-        
-        function update() {
-            if (gameState === 'menu') {
-                if (pressed['Space']) { init(); gameState = 'playing'; }
-            } else if (gameState === 'playing') {
-                updateGame();
-            } else if (gameState === 'levelUp') {
-                levelUpTimer--;
-                if (levelUpTimer <= 0) gameState = 'playing';
-            } else if (gameState === 'victory' || gameState === 'gameOver') {
-                if (pressed['KeyR']) { init(); gameState = 'playing'; }
-            }
-            for (const k in pressed) pressed[k] = false;
-        }
-        
-        function updateGame() {
-            let dx = 0, dy = 0;
-            if (keys['KeyW'] || keys['ArrowUp']) { dy = -1; player.dir = 'up'; }
-            if (keys['KeyS'] || keys['ArrowDown']) { dy = 1; player.dir = 'down'; }
-            if (keys['KeyA'] || keys['ArrowLeft']) { dx = -1; player.dir = 'left'; }
-            if (keys['KeyD'] || keys['ArrowRight']) { dx = 1; player.dir = 'right'; }
-            
-            if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
-            
-            const nx = player.x + dx * player.speed;
-            const ny = player.y + dy * player.speed;
-            if (!isWall(nx, player.y) && !checkDoor(nx, player.y)) player.x = nx;
-            if (!isWall(player.x, ny) && !checkDoor(player.x, ny)) player.y = ny;
-            
-            if (player.atkCD > 0) player.atkCD--;
-            
-            if (pressed['Space'] && player.atkCD === 0) {
-                player.atkCD = player.maxAtkCD;
-                let pdx = 0, pdy = 0;
-                if (player.dir === 'up') pdy = -1;
-                else if (player.dir === 'down') pdy = 1;
-                else if (player.dir === 'left') pdx = -1;
-                else if (player.dir === 'right') pdx = 1;
-                projectiles.push({ x: player.x, y: player.y, dx: pdx * 8, dy: pdy * 8, r: 5, life: 30,
-                                  dmg: player.stats.atk * (1 + (player.stats.lvl - 1) * 0.1) });
-            }
-            
-            if (pressed['KeyE'] && player.inv.potions > 0 && player.stats.hp < player.stats.maxHP) {
-                player.inv.potions--;
-                player.stats.hp = Math.min(player.stats.maxHP, player.stats.hp + 50);
-            }
-            
-            if (pressed['KeyQ']) {
-                for (const c of chests) {
-                    if (!c.opened && Math.hypot(player.x - c.x, player.y - c.y) < 30) {
-                        c.opened = true;
-                        player.inv.gold += c.gold;
-                        if (c.potion) player.inv.potions++;
-                    }
-                }
-                for (const d of doors) {
-                    if (d.locked && player.inv.keys > 0 && Math.hypot(player.x - d.x, player.y - d.y) < 30) {
-                        d.locked = false;
-                        player.inv.keys--;
-                    }
-                }
-            }
-            
-            for (let i = projectiles.length - 1; i >= 0; i--) {
-                const p = projectiles[i];
-                p.x += p.dx; p.y += p.dy; p.life--;
-                if (p.life <= 0 || isWall(p.x, p.y)) { projectiles.splice(i, 1); continue; }
                 
-                for (let j = enemies.length - 1; j >= 0; j--) {
-                    const e = enemies[j];
-                    if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + p.r) {
-                        e.hp -= Math.max(1, p.dmg - e.def);
-                        if (e.hp <= 0) {
-                            player.stats.exp += e.exp;
-                            player.inv.gold += Math.floor(Math.random() * (e.gold[1] - e.gold[0] + 1)) + e.gold[0];
-                            enemies.splice(j, 1);
-                            
-                            if (player.stats.exp >= player.stats.expNext) {
-                                player.stats.lvl++;
-                                player.stats.exp -= player.stats.expNext;
-                                player.stats.expNext = 100 * player.stats.lvl;
-                                player.stats.maxHP += 10;
-                                player.stats.hp = player.stats.maxHP;
-                                player.stats.atk += 2;
-                                player.stats.def += 1;
-                                levelUpTimer = 90;
-                                gameState = 'levelUp';
-                            }
+                // Health bar
+                const barWidth = 30;
+                const barHeight = 4;
+                const healthPercent = this.health / this.maxHealth;
+                
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(this.x - barWidth/2, this.y - this.radius - 10, barWidth, barHeight);
+                ctx.fillStyle = '#00FF00';
+                ctx.fillRect(this.x - barWidth/2, this.y - this.radius - 10, barWidth * healthPercent, barHeight);
+            }
+        }
+        
+        // Projectile class
+        class Projectile {
+            constructor(x, y, dx, dy, speed, damage, owner) {
+                this.x = x;
+                this.y = y;
+                this.dx = dx;
+                this.dy = dy;
+                this.speed = speed;
+                this.damage = damage;
+                this.owner = owner;
+                this.radius = 5;
+                this.lifetime = 30;
+                this.color = owner === 'player' ? '#FFFF00' : '#FF0000';
+            }
+            
+            update() {
+                this.x += this.dx * this.speed;
+                this.y += this.dy * this.speed;
+                this.lifetime--;
+                
+                // Check wall collision
+                if (this.checkWallCollision()) {
+                    this.lifetime = 0;
+                }
+                
+                // Check enemy collision (player projectiles)
+                if (this.owner === 'player') {
+                    for (let enemy of enemies) {
+                        const dist = Math.hypot(this.x - enemy.x, this.y - enemy.y);
+                        if (dist < this.radius + enemy.radius) {
+                            enemy.takeDamage(this.damage);
+                            this.lifetime = 0;
+                            break;
                         }
-                        projectiles.splice(i, 1);
-                        break;
+                    }
+                }
+                
+                // Check player collision (enemy projectiles)
+                if (this.owner === 'enemy' && player) {
+                    const dist = Math.hypot(this.x - player.x, this.y - player.y);
+                    if (dist < this.radius + player.radius) {
+                        player.takeDamage(this.damage);
+                        this.lifetime = 0;
                     }
                 }
             }
             
-            for (const e of enemies) {
-                const dist = Math.hypot(player.x - e.x, player.y - e.y);
-                const edx = player.x - e.x, edy = player.y - e.y;
-                if (Math.abs(edx) > Math.abs(edy)) e.dir = edx > 0 ? 'right' : 'left';
-                else e.dir = edy > 0 ? 'down' : 'up';
+            checkWallCollision() {
+                const gridX = Math.floor((this.x - OFFSET_X) / GRID_SIZE);
+                const gridY = Math.floor((this.y - OFFSET_Y) / GRID_SIZE);
                 
-                if (e.chase && dist < e.range) {
-                    const ang = Math.atan2(player.y - e.y, player.x - e.x);
-                    const enx = e.x + Math.cos(ang) * e.spd;
-                    const eny = e.y + Math.sin(ang) * e.spd;
-                    if (!isWall(enx, e.y)) e.x = enx;
-                    if (!isWall(e.x, eny)) e.y = eny;
+                if (gridX < 0 || gridX >= DUNGEON_COLS || gridY < 0 || gridY >= DUNGEON_ROWS) {
+                    return true;
                 }
                 
-                if (e.timer > 0) e.timer--;
-                if (dist < e.atkRange && e.timer === 0) {
-                    e.timer = e.atkCD;
-                    const ang = Math.atan2(player.y - e.y, player.x - e.x);
-                    enemyProj.push({ x: e.x, y: e.y, dx: Math.cos(ang) * 5, dy: Math.sin(ang) * 5, r: 5, life: 30, dmg: e.atk });
-                }
+                return dungeon[gridY][gridX] === 1;
             }
             
-            for (let i = enemyProj.length - 1; i >= 0; i--) {
-                const p = enemyProj[i];
-                p.x += p.dx; p.y += p.dy; p.life--;
-                if (p.life <= 0 || isWall(p.x, p.y)) { enemyProj.splice(i, 1); continue; }
-                
-                if (Math.hypot(p.x - player.x, p.y - player.y) < player.radius + p.r) {
-                    player.stats.hp -= Math.max(1, p.dmg - player.stats.def);
-                    if (player.stats.hp <= 0) gameState = 'gameOver';
-                    enemyProj.splice(i, 1);
-                }
-            }
-            
-            for (let i = items.length - 1; i >= 0; i--) {
-                const it = items[i];
-                if (Math.hypot(player.x - it.x, player.y - it.y) < player.radius + it.r) {
-                    if (it.type === 'key') player.inv.keys++;
-                    else if (it.type === 'potion') player.inv.potions++;
-                    items.splice(i, 1);
-                }
-            }
-            
-            checkStairs();
-            if (stairs && Math.hypot(player.x - stairs.x, player.y - stairs.y) < 30) {
-                floor++;
-                if (floor > 10) gameState = 'victory';
-                else genLevel();
-            }
-        }
-        
-        function drawSprite(ent, x, y) {
-            if (!spriteLoaded) {
-                ctx.fillStyle = ent.col;
+            draw() {
+                ctx.fillStyle = this.color;
                 ctx.beginPath();
-                ctx.arc(x, y, ent.r, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.fill();
+            }
+        }
+        
+        // Item class
+        class Item {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.radius = 12;
+                this.spritePos = { row: 28, col: 13 };
+            }
+            
+            draw() {
+                if (spriteSheetLoaded) {
+                    const sx = this.spritePos.col * TILE_SIZE;
+                    const sy = this.spritePos.row * TILE_SIZE;
+                    const size = TILE_SIZE * SPRITE_SCALE;
+                    ctx.drawImage(spriteSheet, sx, sy, TILE_SIZE, TILE_SIZE,
+                                this.x - size/2, this.y - size/2, size, size);
+                } else {
+                    ctx.fillStyle = '#FF1493';
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+        
+        // Chest class
+        class Chest {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 12;
+                this.opened = false;
+                this.gold = Math.floor(Math.random() * 71) + 30; // 30-100
+                this.hasPotion = Math.random() < 0.5;
+            }
+            
+            open(player) {
+                if (!this.opened) {
+                    this.opened = true;
+                    player.gold += this.gold;
+                    if (this.hasPotion) {
+                        player.potions++;
+                    }
+                }
+            }
+            
+            draw() {
+                if (spriteSheetLoaded) {
+                    const spritePos = this.opened ? { row: 23, col: 5 } : { row: 22, col: 5 };
+                    const sx = spritePos.col * TILE_SIZE;
+                    const sy = spritePos.row * TILE_SIZE;
+                    const size = TILE_SIZE * SPRITE_SCALE;
+                    ctx.drawImage(spriteSheet, sx, sy, TILE_SIZE, TILE_SIZE,
+                                this.x - size/2, this.y - size/2, size, size);
+                } else {
+                    ctx.fillStyle = this.opened ? '#8B4513' : '#FFD700';
+                    ctx.fillRect(this.x - this.radius, this.y - this.radius, 
+                               this.radius * 2, this.radius * 2);
+                }
+            }
+        }
+        
+        // Dungeon generation using BSP
+        function generateDungeon() {
+            // Reset game entities
+            enemies = [];
+            projectiles = [];
+            items = [];
+            chests = [];
+            exitStairs = null;
+            
+            // Initialize dungeon with walls
+            dungeon = [];
+            for (let y = 0; y < DUNGEON_ROWS; y++) {
+                dungeon[y] = [];
+                for (let x = 0; x < DUNGEON_COLS; x++) {
+                    dungeon[y][x] = 1; // 1 = wall
+                }
+            }
+            
+            // Generate rooms using BSP
+            rooms = [];
+            const rootPartition = {
+                x: 0,
+                y: 0,
+                width: DUNGEON_COLS,
+                height: DUNGEON_ROWS
+            };
+            
+            partitionSpace(rootPartition, 0);
+            
+            // Connect rooms with corridors
+            for (let i = 0; i < rooms.length - 1; i++) {
+                const room1 = rooms[i];
+                const room2 = rooms[i + 1];
+                createCorridor(room1, room2);
+            }
+            
+            // Spawn player in first room
+            const firstRoom = rooms[0];
+            const playerX = (firstRoom.x + firstRoom.width / 2) * GRID_SIZE + OFFSET_X;
+            const playerY = (firstRoom.y + firstRoom.height / 2) * GRID_SIZE + OFFSET_Y;
+            
+            if (!player) {
+                player = new Player(playerX, playerY);
+            } else {
+                player.x = playerX;
+                player.y = playerY;
+            }
+            
+            // Spawn enemies in rooms (excluding first room)
+            for (let i = 1; i < rooms.length; i++) {
+                const room = rooms[i];
+                const enemyCount = Math.floor(Math.random() * 3) + 1 + Math.floor(floor * 0.5);
+                
+                for (let j = 0; j < enemyCount; j++) {
+                    const ex = (room.x + 1 + Math.random() * (room.width - 2)) * GRID_SIZE + OFFSET_X;
+                    const ey = (room.y + 1 + Math.random() * (room.height - 2)) * GRID_SIZE + OFFSET_Y;
+                    
+                    const rand = Math.random();
+                    let type;
+                    if (rand < 0.5) type = 'slime';
+                    else if (rand < 0.8) type = 'skeleton';
+                    else type = 'orc';
+                    
+                    enemies.push(new Enemy(ex, ey, type));
+                }
+            }
+            
+            // Spawn chests
+            const chestCount = Math.floor(Math.random() * 3) + 2;
+            for (let i = 0; i < chestCount; i++) {
+                const room = rooms[Math.floor(Math.random() * rooms.length)];
+                const cx = (room.x + 1 + Math.random() * (room.width - 2)) * GRID_SIZE + OFFSET_X;
+                const cy = (room.y + 1 + Math.random() * (room.height - 2)) * GRID_SIZE + OFFSET_Y;
+                chests.push(new Chest(cx, cy));
+            }
+        }
+        
+        function partitionSpace(partition, depth) {
+            if (depth > 3 || partition.width < 8 || partition.height < 8) {
+                createRoom(partition);
                 return;
             }
             
-            let col;
-            const dirIdx = { right: 0, down: 1, up: 2, left: 3 };
-            col = ent.cols[dirIdx[ent.dir] || 1];
+            const splitHorizontal = Math.random() > 0.5;
             
-            const sx = col * TILE_SIZE;
-            const sy = ent.row * TILE_SIZE;
-            const sz = TILE_SIZE * ent.scale;
-            
-            ctx.drawImage(spriteSheet, sx, sy, TILE_SIZE, TILE_SIZE, x - sz/2, y - sz/2, sz, sz);
-        }
-        
-        function render() {
-            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            
-            if (gameState === 'menu') {
-                ctx.fillStyle = "#1a1a1a";
-                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                
-                ctx.fillStyle = "#FFD700";
-                ctx.font = "bold 60px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText("RPG DUNGEON", CANVAS_WIDTH/2, 150);
-                
-                ctx.fillStyle = "#CCC";
-                ctx.font = "22px Arial";
-                ctx.fillText("AI-Generated Game", CANVAS_WIDTH/2, 200);
-                
-                ctx.fillStyle = "#0F0";
-                ctx.font = "bold 30px Arial";
-                ctx.fillText("Press SPACE to Start", CANVAS_WIDTH/2, 300);
-                
-                ctx.fillStyle = "#FFF";
-                ctx.font = "24px Arial";
-                ctx.fillText("Controls:", CANVAS_WIDTH/2, 380);
-                
-                ctx.fillStyle = "#CCC";
-                ctx.font = "18px Arial";
-                ctx.fillText("WASD/Arrows: Move | Space: Attack | E: Potion | Q: Interact", CANVAS_WIDTH/2, 420);
-                
-                ctx.fillStyle = "#F60";
-                ctx.font = "20px Arial";
-                ctx.fillText("Defeat all enemies and find the stairs!", CANVAS_WIDTH/2, 480);
-            } else if (gameState === 'playing' || gameState === 'levelUp') {
-                ctx.fillStyle = "#000";
-                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                
-                for (let y = 0; y < DUNGEON_ROWS; y++) {
-                    for (let x = 0; x < DUNGEON_COLS; x++) {
-                        ctx.fillStyle = dungeon[y][x] === 1 ? "#4A3728" : "#2C1810";
-                        ctx.fillRect(DUNGEON_OFFSET_X + x * GRID_SIZE, DUNGEON_OFFSET_Y + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
-                    }
-                }
-                
-                for (const d of doors) {
-                    ctx.fillStyle = d.locked ? "#8B4513" : "#4A3728";
-                    if (d.ori === 'h') ctx.fillRect(d.x - 3, d.y - GRID_SIZE/2, 6, GRID_SIZE);
-                    else ctx.fillRect(d.x - GRID_SIZE/2, d.y - 3, GRID_SIZE, 6);
-                }
-                
-                if (stairs) {
-                    ctx.fillStyle = "#FFD700";
-                    ctx.fillRect(stairs.x - stairs.w/2, stairs.y - stairs.h/2, stairs.w, stairs.h);
-                }
-                
-                for (const it of items) {
-                    ctx.fillStyle = it.col;
-                    ctx.beginPath();
-                    ctx.arc(it.x, it.y, it.r, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                
-                for (const c of chests) {
-                    ctx.fillStyle = c.opened ? "#654321" : "#8B4513";
-                    ctx.fillRect(c.x - c.w/2, c.y - c.h/2, c.w, c.h);
-                }
-                
-                for (const p of projectiles) {
-                    ctx.fillStyle = "#FF0";
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                
-                for (const p of enemyProj) {
-                    ctx.fillStyle = "#F00";
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                
-                for (const e of enemies) {
-                    drawSprite(e, e.x, e.y);
-                    const bw = 30, bh = 4, hpct = e.hp / e.maxHP;
-                    ctx.fillStyle = "#F00";
-                    ctx.fillRect(e.x - bw/2, e.y - e.r * e.scale - 10, bw, bh);
-                    ctx.fillStyle = "#0F0";
-                    ctx.fillRect(e.x - bw/2, e.y - e.r * e.scale - 10, bw * hpct, bh);
-                }
-                
-                const pSprite = { row: 4, cols: [9,10,11,12], scale: 2, r: player.radius, col: "#00F", dir: player.dir };
-                drawSprite(pSprite, player.x, player.y);
-                
-                ctx.textAlign = "left";
-                ctx.fillStyle = "#F00";
-                ctx.font = "bold 18px Arial";
-                ctx.fillText(`HP: ${Math.floor(player.stats.hp)}/${player.stats.maxHP}`, 20, 25);
-                
-                ctx.fillStyle = "#FD0";
-                ctx.fillText(`Floor: ${floor}`, 200, 25);
-                
-                ctx.fillStyle = "#0FF";
-                ctx.fillText(`Level: ${player.stats.lvl}`, 340, 25);
-                
-                ctx.fillStyle = "#93D";
-                ctx.fillText(`EXP: ${Math.floor(player.stats.exp)}/${player.stats.expNext}`, 480, 25);
-                
-                ctx.fillStyle = "#FD0";
-                ctx.fillText(`Gold: ${player.inv.gold}`, 720, 25);
-                
-                ctx.fillStyle = "#F49";
-                ctx.fillText(`Potions: ${player.inv.potions}`, 860, 25);
-                
-                ctx.fillStyle = "#FD0";
-                ctx.fillText(`Keys: ${player.inv.keys}`, 20, CANVAS_HEIGHT - 10);
-                
-                if (gameState === 'levelUp') {
-                    ctx.fillStyle = "rgba(0,0,0,0.5)";
-                    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                    
-                    ctx.fillStyle = "#FFD700";
-                    ctx.font = "bold 50px Arial";
-                    ctx.textAlign = "center";
-                    ctx.fillText("LEVEL UP!", CANVAS_WIDTH/2, 250);
-                    
-                    ctx.fillStyle = "#0F0";
-                    ctx.font = "28px Arial";
-                    ctx.fillText(`Level ${player.stats.lvl} | +10 HP | +2 ATK | +1 DEF`, CANVAS_WIDTH/2, 320);
-                }
-            } else if (gameState === 'victory') {
-                ctx.fillStyle = "#1a1a1a";
-                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                
-                ctx.fillStyle = "#FFD700";
-                ctx.font = "bold 60px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText("VICTORY!", CANVAS_WIDTH/2, 200);
-                
-                ctx.fillStyle = "#0F0";
-                ctx.font = "32px Arial";
-                ctx.fillText("You've conquered the dungeon!", CANVAS_WIDTH/2, 280);
-                
-                ctx.fillStyle = "#FFF";
-                ctx.font = "28px Arial";
-                ctx.fillText(`Final Level: ${player.stats.lvl}`, CANVAS_WIDTH/2, 350);
-                ctx.fillText(`Final Floor: ${floor}`, CANVAS_WIDTH/2, 390);
-                
-                ctx.fillStyle = "#FD0";
-                ctx.fillText(`Gold Collected: ${player.inv.gold}`, CANVAS_WIDTH/2, 430);
-                
-                ctx.fillStyle = "#0F0";
-                ctx.font = "24px Arial";
-                ctx.fillText("Press R to Restart", CANVAS_WIDTH/2, 520);
-            } else if (gameState === 'gameOver') {
-                ctx.fillStyle = "#1a1a1a";
-                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                
-                ctx.fillStyle = "#F00";
-                ctx.font = "bold 60px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText("GAME OVER", CANVAS_WIDTH/2, 200);
-                
-                ctx.fillStyle = "#CCC";
-                ctx.font = "32px Arial";
-                ctx.fillText("You have fallen...", CANVAS_WIDTH/2, 280);
-                
-                ctx.fillStyle = "#FFF";
-                ctx.font = "28px Arial";
-                ctx.fillText(`Final Level: ${player.stats.lvl}`, CANVAS_WIDTH/2, 350);
-                ctx.fillText(`Floors Cleared: ${floor - 1}`, CANVAS_WIDTH/2, 390);
-                
-                ctx.fillStyle = "#FD0";
-                ctx.fillText(`Gold Collected: ${player.inv.gold}`, CANVAS_WIDTH/2, 430);
-                
-                ctx.fillStyle = "#0F0";
-                ctx.font = "24px Arial";
-                ctx.fillText("Press R to Restart", CANVAS_WIDTH/2, 520);
+            if (splitHorizontal && partition.height >= 8) {
+                const splitPos = Math.floor(partition.height / 2) + Math.floor(Math.random() * 3) - 1;
+                const top = {
+                    x: partition.x,
+                    y: partition.y,
+                    width: partition.width,
+                    height: splitPos
+                };
+                const bottom = {
+                    x: partition.x,
+                    y: partition.y + splitPos,
+                    width: partition.width,
+                    height: partition.height - splitPos
+                };
+                partitionSpace(top, depth + 1);
+                partitionSpace(bottom, depth + 1);
+            } else if (!splitHorizontal && partition.width >= 8) {
+                const splitPos = Math.floor(partition.width / 2) + Math.floor(Math.random() * 3) - 1;
+                const left = {
+                    x: partition.x,
+                    y: partition.y,
+                    width: splitPos,
+                    height: partition.height
+                };
+                const right = {
+                    x: partition.x + splitPos,
+                    y: partition.y,
+                    width: partition.width - splitPos,
+                    height: partition.height
+                };
+                partitionSpace(left, depth + 1);
+                partitionSpace(right, depth + 1);
+            } else {
+                createRoom(partition);
             }
         }
         
-        document.addEventListener('keydown', e => {
-            if (!pressed[e.code]) pressed[e.code] = true;
-            keys[e.code] = true;
-        });
-        
-        document.addEventListener('keyup', e => { keys[e.code] = false; });
-        
-        function loop() {
-            update();
-            render();
-            requestAnimationFrame(loop);
+        function createRoom(partition) {
+            const minSize = 3;
+            const maxSize = 7;
+            
+            const width = Math.min(maxSize, Math.max(minSize, Math.floor(Math.random() * (partition.width - 2)) + minSize));
+            const height = Math.min(maxSize, Math.max(minSize, Math.floor(Math.random() * (partition.height - 2)) + minSize));
+            
+            const x = partition.x + Math.floor(Math.random() * (partition.width - width));
+            const y = partition.y + Math.floor(Math.random() * (partition.height - height));
+            
+            const room = { x, y, width, height };
+            rooms.push(room);
+            
+            // Carve out the room
+            for (let ry = y; ry < y + height; ry++) {
+                for (let rx = x; rx < x + width; rx++) {
+                    if (ry >= 0 && ry < DUNGEON_ROWS && rx >= 0 && rx < DUNGEON_COLS) {
+                        dungeon[ry][rx] = 0; // 0 = floor
+                    }
+                }
+            }
         }
         
-        loop();
+        function createCorridor(room1, room2) {
+            const x1 = Math.floor(room1.x + room1.width / 2);
+            const y1 = Math.floor(room1.y + room1.height / 2);
+            const x2 = Math.floor(room2.x + room2.width / 2);
+            const y2 = Math.floor(room2.y + room2.height / 2);
+            
+            // Create L-shaped corridor
+            if (Math.random() > 0.5) {
+                // Horizontal then vertical
+                for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+                    if (y1 >= 0 && y1 < DUNGEON_ROWS && x >= 0 && x < DUNGEON_COLS) {
+                        dungeon[y1][x] = 0;
+                    }
+                }
+                for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+                    if (y >= 0 && y < DUNGEON_ROWS && x2 >= 0 && x2 < DUNGEON_COLS) {
+                        dungeon[y][x2] = 0;
+                    }
+                }
+            } else {
+                // Vertical then horizontal
+                for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+                    if (y >= 0 && y < DUNGEON_ROWS && x1 >= 0 && x1 < DUNGEON_COLS) {
+                        dungeon[y][x1] = 0;
+                    }
+                }
+                for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+                    if (y2 >= 0 && y2 < DUNGEON_ROWS && x >= 0 && x < DUNGEON_COLS) {
+                        dungeon[y2][x] = 0;
+                    }
+                }
+            }
+        }
+        
+        // Draw functions
+        function drawDungeon() {
+            for (let y = 0; y < DUNGEON_ROWS; y++) {
+                for (let x = 0; x < DUNGEON_COLS; x++) {
+                    const px = x * GRID_SIZE + OFFSET_X;
+                    const py = y * GRID_SIZE + OFFSET_Y;
+                    
+                    if (dungeon[y][x] === 1) {
+                        ctx.fillStyle = '#2C1810';
+                        ctx.fillRect(px, py, GRID_SIZE, GRID_SIZE);
+                    } else {
+                        ctx.fillStyle = '#4A3728';
+                        ctx.fillRect(px, py, GRID_SIZE, GRID_SIZE);
+                    }
+                }
+            }
+            
+            // Draw exit stairs if all enemies defeated
+            if (enemies.length === 0 && !exitStairs) {
+                const lastRoom = rooms[rooms.length - 1];
+                exitStairs = {
+                    x: (lastRoom.x + lastRoom.width / 2) * GRID_SIZE + OFFSET_X,
+                    y: (lastRoom.y + lastRoom.height / 2) * GRID_SIZE + OFFSET_Y
+                };
+            }
+            
+            if (exitStairs) {
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(exitStairs.x - 15, exitStairs.y - 15, 30, 30);
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('EXIT', exitStairs.x, exitStairs.y + 5);
+            }
+        }
+        
+        function drawHUD() {
+            ctx.fillStyle = '#FF0000';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`HP: ${player.health}/${player.maxHealth}`, 20, 25);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.fillText(`Floor: ${floor}`, 200, 25);
+            
+            ctx.fillStyle = '#00FFFF';
+            ctx.fillText(`Level: ${player.level}`, 340, 25);
+            
+            ctx.fillStyle = '#9370DB';
+            ctx.fillText(`EXP: ${player.experience}/${player.experienceToNext}`, 480, 25);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.fillText(`Gold: ${player.gold}`, 720, 25);
+            
+            ctx.fillStyle = '#FF1493';
+            ctx.fillText(`Potions: ${player.potions}`, 860, 25);
+        }
+        
+        function drawMenu() {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 60px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('RPG DUNGEON', canvas.width / 2, 150);
+            
+            ctx.fillStyle = '#CCCCCC';
+            ctx.font = '22px Arial';
+            ctx.fillText('AI-Generated Game', canvas.width / 2, 200);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = 'bold 30px Arial';
+            ctx.fillText('Press S to Start', canvas.width / 2, 300);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.font = '24px Arial';
+            ctx.fillText('Press H for How to Play', canvas.width / 2, 350);
+            
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '24px Arial';
+            ctx.fillText('Controls:', canvas.width / 2, 430);
+            
+            ctx.fillStyle = '#CCCCCC';
+            ctx.font = '18px Arial';
+            ctx.fillText('WASD/Arrows: Move | Space: Attack | E: Use Potion | Q: Interact', canvas.width / 2, 470);
+            
+            ctx.fillStyle = '#FF6600';
+            ctx.font = '20px Arial';
+            ctx.fillText('Defeat all enemies and find the stairs!', canvas.width / 2, 530);
+            
+            // Credits
+            ctx.fillStyle = '#888888';
+            ctx.font = '14px Arial';
+            ctx.fillText('Developer: AI & megadigo (megadigo@gmail.com)', canvas.width / 2, 630);
+            ctx.fillText('Contributors: Claude Sonnet 4.5, Graphics Oryx (www.oryxdesignlab.com)', canvas.width / 2, 650);
+            ctx.fillText('License: MIT', canvas.width / 2, 670);
+        }
+        
+        function drawHowToPlay() {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 50px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('HOW TO PLAY', canvas.width / 2, 60);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = 'bold 28px Arial';
+            ctx.fillText('OBJECTIVE', canvas.width / 2, 120);
+            
+            ctx.fillStyle = '#CCCCCC';
+            ctx.font = '18px Arial';
+            ctx.fillText('Navigate through 10 procedurally generated dungeon floors.', canvas.width / 2, 155);
+            ctx.fillText('Defeat all enemies on each floor to unlock the exit stairs.', canvas.width / 2, 180);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = 'bold 28px Arial';
+            ctx.fillText('CONTROLS', canvas.width / 2, 230);
+            
+            ctx.fillStyle = '#CCCCCC';
+            ctx.font = '18px Arial';
+            ctx.fillText('WASD or Arrow Keys - Move your hero', canvas.width / 2, 265);
+            ctx.fillText('SPACE - Shoot projectiles to attack enemies', canvas.width / 2, 290);
+            ctx.fillText('E - Use a health potion to restore 50 HP', canvas.width / 2, 315);
+            ctx.fillText('Q - Interact with chests and pick up items', canvas.width / 2, 340);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = 'bold 28px Arial';
+            ctx.fillText('GAMEPLAY MECHANICS', canvas.width / 2, 390);
+            
+            ctx.fillStyle = '#CCCCCC';
+            ctx.font = '18px Arial';
+            ctx.fillText('• Collect gold from chests and defeated enemies', canvas.width / 2, 425);
+            ctx.fillText('• Gain experience to level up and increase your stats', canvas.width / 2, 450);
+            ctx.fillText('• Enemies get stronger as you progress through floors', canvas.width / 2, 475);
+            ctx.fillText('• Health potions and chests spawn throughout the dungeon', canvas.width / 2, 500);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = 'bold 28px Arial';
+            ctx.fillText('TIPS', canvas.width / 2, 550);
+            
+            ctx.fillStyle = '#CCCCCC';
+            ctx.font = '18px Arial';
+            ctx.fillText('Use walls for cover and kite enemies with ranged attacks', canvas.width / 2, 585);
+            ctx.fillText('Save health potions for tough encounters', canvas.width / 2, 610);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 22px Arial';
+            ctx.fillText('Press ESC to Return to Menu', canvas.width / 2, 680);
+        }
+        
+        function drawLevelUp() {
+            // Draw game state underneath
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            drawDungeon();
+            chests.forEach(chest => chest.draw());
+            items.forEach(item => item.draw());
+            enemies.forEach(enemy => enemy.draw());
+            projectiles.forEach(proj => proj.draw());
+            if (player) player.draw();
+            drawHUD();
+            
+            // Semi-transparent overlay
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 50px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('LEVEL UP!', canvas.width / 2, 250);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = '28px Arial';
+            ctx.fillText(`Level ${player.level} | +10 HP | +2 ATK | +1 DEF`, canvas.width / 2, 320);
+            
+            // Update timer
+            levelUpTimer--;
+            if (levelUpTimer <= 0) {
+                gameState = 'playing';
+            }
+        }
+        
+        function drawVictory() {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 60px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('VICTORY!', canvas.width / 2, 200);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = '32px Arial';
+            ctx.fillText("You've conquered the dungeon!", canvas.width / 2, 280);
+            
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '28px Arial';
+            ctx.fillText(`Final Level: ${player.level}`, canvas.width / 2, 350);
+            ctx.fillText(`Final Floor: ${floor}`, canvas.width / 2, 390);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.fillText(`Gold Collected: ${player.gold}`, canvas.width / 2, 430);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = '24px Arial';
+            ctx.fillText('Press R to Restart', canvas.width / 2, 520);
+        }
+        
+        function drawGameOver() {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#FF0000';
+            ctx.font = 'bold 60px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('GAME OVER', canvas.width / 2, 200);
+            
+            ctx.fillStyle = '#CCCCCC';
+            ctx.font = '32px Arial';
+            ctx.fillText('You have fallen...', canvas.width / 2, 280);
+            
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '28px Arial';
+            ctx.fillText(`Final Level: ${player.level}`, canvas.width / 2, 350);
+            ctx.fillText(`Floors Cleared: ${floor - 1}`, canvas.width / 2, 390);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.fillText(`Gold Collected: ${player.gold}`, canvas.width / 2, 430);
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.font = '24px Arial';
+            ctx.fillText('Press R to Restart', canvas.width / 2, 520);
+        }
+        
+        // Game loop
+        function gameLoop() {
+            // Clear canvas
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (gameState === 'menu') {
+                drawMenu();
+            } else if (gameState === 'howToPlay') {
+                drawHowToPlay();
+            } else if (gameState === 'playing') {
+                // Update
+                if (player) {
+                    player.update();
+                }
+                enemies.forEach(enemy => enemy.update());
+                projectiles.forEach(proj => proj.update());
+                projectiles = projectiles.filter(proj => proj.lifetime > 0);
+                
+                // Draw
+                drawDungeon();
+                chests.forEach(chest => chest.draw());
+                items.forEach(item => item.draw());
+                enemies.forEach(enemy => enemy.draw());
+                projectiles.forEach(proj => proj.draw());
+                if (player) {
+                    player.draw();
+                    drawHUD();
+                }
+            } else if (gameState === 'levelUp') {
+                drawLevelUp();
+            } else if (gameState === 'victory') {
+                drawVictory();
+            } else if (gameState === 'gameOver') {
+                drawGameOver();
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Input handling
+        function handleKeyDown(e) {
+            keys[e.code] = true;
+            
+            // Prevent default browser behavior for game keys
+            if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 
+                 'ArrowDown', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+            
+            // Menu state
+            if (gameState === 'menu') {
+                if (e.code === 'KeyS') {
+                    gameState = 'playing';
+                    floor = 1;
+                    player = null;
+                    generateDungeon();
+                }
+                if (e.code === 'KeyH') {
+                    gameState = 'howToPlay';
+                }
+            }
+            
+            // How to play state
+            if (gameState === 'howToPlay') {
+                if (e.code === 'Escape') {
+                    gameState = 'menu';
+                }
+                if (e.code === 'KeyS') {
+                    gameState = 'playing';
+                    floor = 1;
+                    player = null;
+                    generateDungeon();
+                }
+            }
+            
+            // Victory/GameOver state
+            if ((gameState === 'victory' || gameState === 'gameOver') && e.code === 'KeyR') {
+                gameState = 'playing';
+                floor = 1;
+                player = null;
+                generateDungeon();
+            }
+        }
+        
+        function handleKeyUp(e) {
+            keys[e.code] = false;
+        }
+        
+        // Initialize game
+        function init() {
+            loadSpriteSheet();
+            generateDungeon();
+            
+            // Set up event listeners
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+            
+            // Start game loop
+            gameLoop();
+        }
+        
+        // Start the game
+        init();
     </script>
 </body>
 </html>

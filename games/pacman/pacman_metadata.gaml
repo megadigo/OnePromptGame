@@ -126,12 +126,12 @@ resources:
     ghost_combo_multiplier: 2  # Each ghost eaten in sequence doubles
   
   game_states:
-    available: ["menu", "playing", "levelComplete", "gameOver"]
+    available: ["menu", "howToPlay", "playing", "levelComplete", "gameOver"]
     default: "menu"
     
   input_handling:
     keydown_events: true
-    supported_keys: ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight", "Space", "KeyR"]
+    supported_keys: ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight", "Space", "KeyR", "KeyH", "Escape"]
     
   game_audio:
     chomp: "assets/chomp.wav"
@@ -163,25 +163,154 @@ game_states:
           position:
             x: "center"
             y: 350
+        - text: "Press H for How to Play"
+          font: "24px Arial"
+          color: "#FFD700"  # Gold
+          position:
+            x: "center"
+            y: 400
         - text: "Controls: WASD or Arrow Keys"
           font: "20px Arial"
           color: "#00FFFF"  # Cyan
           position:
             x: "center"
-            y: 430
+            y: 480
         - text: "Eat all pellets! Avoid ghosts!"
           font: "20px Arial"
           color: "#FF0000"  # Red
           position:
             x: "center"
-            y: 470
+            y: 520
         - text: "Power pellets let you eat ghosts!"
           font: "20px Arial"
           color: "#FFB851"  # Orange
           position:
             x: "center"
-            y: 510
+            y: 560
     input_transitions:
+      space_key: "playing"
+      h_key: "howToPlay"
+
+  howToPlay:
+    canvas_rendering:
+      background: "#000000"  # Black
+      ui_elements:
+        - text: "HOW TO PLAY PAC-MAN"
+          font: "bold 48px Arial"
+          color: "#FFFF00"  # Yellow
+          position:
+            x: "center"
+            y: 70
+        - text: "OBJECTIVE"
+          font: "bold 28px Arial"
+          color: "#FFB8FF"  # Pink
+          position:
+            x: "center"
+            y: 130
+        - text: "Navigate the maze and eat all the pellets to advance to the next level."
+          font: "18px Arial"
+          color: "#FFFFFF"
+          position:
+            x: "center"
+            y: 165
+        - text: "Avoid the ghosts or you'll lose a life! Run out of lives and it's game over."
+          font: "18px Arial"
+          color: "#FFFFFF"
+          position:
+            x: "center"
+            y: 190
+        - text: "CONTROLS"
+          font: "bold 28px Arial"
+          color: "#FFB8FF"  # Pink
+          position:
+            x: "center"
+            y: 240
+        - text: "WASD or Arrow Keys - Move Pac-Man in four directions"
+          font: "18px Arial"
+          color: "#FFFFFF"
+          position:
+            x: "center"
+            y: 275
+        - text: "Movement is grid-aligned for precise maze navigation"
+          font: "18px Arial"
+          color: "#CCCCCC"
+          position:
+            x: "center"
+            y: 300
+        - text: "GAMEPLAY ELEMENTS"
+          font: "bold 28px Arial"
+          color: "#FFB8FF"  # Pink
+          position:
+            x: "center"
+            y: 350
+        - text: "• Small Pellets - Worth 10 points each, eat all to complete the level"
+          font: "18px Arial"
+          color: "#FFB897"
+          position:
+            x: "center"
+            y: 385
+        - text: "• Power Pellets (Large) - Worth 50 points, turn ghosts blue for 5 seconds"
+          font: "18px Arial"
+          color: "#FFB897"
+          position:
+            x: "center"
+            y: 410
+        - text: "• Blue Ghosts - Can be eaten for bonus points (200, 400, 800, 1600)"
+          font: "18px Arial"
+          color: "#0000FF"
+          position:
+            x: "center"
+            y: 435
+        - text: "• Lives - Start with 3 lives, lose one when touched by a ghost"
+          font: "18px Arial"
+          color: "#FFFF00"
+          position:
+            x: "center"
+            y: 460
+        - text: "THE GHOSTS"
+          font: "bold 28px Arial"
+          color: "#FFB8FF"  # Pink
+          position:
+            x: "center"
+            y: 510
+        - text: "Blinky (Red) • Pinky (Pink) • Inky (Cyan) • Clyde (Orange)"
+          font: "18px Arial"
+          color: "#FFFFFF"
+          position:
+            x: "center"
+            y: 545
+        - text: "Ghosts chase you through the maze and get faster each level!"
+          font: "18px Arial"
+          color: "#FFFFFF"
+          position:
+            x: "center"
+            y: 570
+        - text: "STRATEGY TIPS"
+          font: "bold 28px Arial"
+          color: "#FFB8FF"  # Pink
+          position:
+            x: "center"
+            y: 620
+        - text: "Plan your route to collect all pellets efficiently"
+          font: "18px Arial"
+          color: "#00FF00"
+          position:
+            x: "center"
+            y: 655
+        - text: "Save power pellets for when you're surrounded by ghosts"
+          font: "18px Arial"
+          color: "#00FF00"
+          position:
+            x: "center"
+            y: 680
+        - text: "Press ESC to Return to Menu"
+          font: "bold 22px Arial"
+          color: "#FFD700"  # Gold
+          position:
+            x: "center"
+            y: 730
+    input_transitions:
+      escape_key: "menu"
       space_key: "playing"
 
   playing:
@@ -408,7 +537,25 @@ prompt_instruction: |
   - CSS for styling and layout
   - JavaScript game implementation with proper game loop
   - Event listeners for keyboard input
-  - Game state management (menu/playing/levelComplete/gameOver)
+  - Game state management (menu/howToPlay/playing/levelComplete/gameOver)
+  
+  GAME STATES:
+  - menu: Main menu with title, start option, and "How to Play" button (Press H)
+  - howToPlay: Detailed instructions page explaining objective, controls, gameplay elements, ghosts, and strategy
+  - playing: Active gameplay state
+  - levelComplete: Level completion notification screen
+  - gameOver: Death screen with final score and restart option
+  
+  HOW TO PLAY PAGE:
+  - Accessed from menu by pressing H key
+  - Display comprehensive game instructions including:
+    * Objective: Eat all pellets to advance levels, avoid ghosts
+    * Controls: WASD/Arrow keys for movement
+    * Gameplay elements: Small pellets (10 pts), power pellets (50 pts), blue ghosts (bonus points), lives system
+    * The Ghosts: Blinky (Red), Pinky (Pink), Inky (Cyan), Clyde (Orange) - chase behavior
+    * Strategy tips: Route planning, power pellet timing
+  - Press ESC to return to menu, or SPACE to start playing
+  - Use exact styling from the howToPlay state specification
   
   MAZE SYSTEM:
   - Grid-based 28x28 maze layout
@@ -430,5 +577,11 @@ prompt_instruction: |
   - Avoid ghosts or lose a life
   - Eat power pellets to turn ghosts blue and eat them for bonus points
   - Progressive difficulty: ghosts get faster each level
+  
+  KEYBOARD INPUT:
+  - Menu state: SPACE to start game, H to view How to Play
+  - How to Play state: ESC to return to menu, SPACE to start game
+  - Playing state: WASD/Arrows for movement
+  - Game Over state: R to restart
   
   The game must be immediately playable without any setup or compilation.

@@ -10,33 +10,28 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
+            background: #000;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             font-family: Arial, sans-serif;
+            overflow: hidden;
         }
-        
-        #game-container {
-            text-align: center;
-        }
-        
-        canvas {
-            border: 3px solid #00ffff;
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
-            background: #000000;
+
+        #game-canvas {
+            border: 3px solid #333;
+            box-shadow: 0 0 20px rgba(255, 128, 0, 0.5);
         }
     </style>
 </head>
 <body>
-    <div id="game-container">
-        <canvas id="game-canvas" width="1200" height="800"></canvas>
-    </div>
+    <canvas id="game-canvas" width="1200" height="800"></canvas>
 
     <script>
+        // Canvas setup
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
 
@@ -45,7 +40,6 @@
         let lives = 3;
         let level = 1;
         let score = 0;
-        let frameCount = 0;
 
         // Player
         const player = {
@@ -54,36 +48,25 @@
             width: 50,
             height: 50,
             speed: 5,
-            color: '#0080FF',
-            moving: { left: false, right: false }
+            color: '#0080FF'
         };
+
+        // Input handling
+        const keys = {};
+
+        // Bullets
+        const playerBullets = [];
+        const enemyBullets = [];
 
         // Invaders
         let invaders = [];
-        let invadersDirection = 1;
-        let invadersMoveTimer = 0;
-        let invadersMoveInterval = 40;
-        let invadersShootTimer = 0;
-        let invadersShootInterval = 30;
-
-        // Bullets
-        let playerBullets = [];
-        let enemyBullets = [];
-
-        // Keys pressed
-        const keys = {};
-
-        // Audio (optional - will fail silently if files don't exist)
-        const audio = {
-            playerShoot: new Audio('assets/player_shoot.wav'),
-            playerDie: new Audio('assets/player_die.wav'),
-            enemyDie: new Audio('assets/enemy_die.wav')
-        };
-
-        // Mute audio errors
-        Object.values(audio).forEach(sound => {
-            sound.addEventListener('error', () => {});
-        });
+        let invaderDirection = 1; // 1 = right, -1 = left
+        let invaderMoveTimer = 0;
+        let invaderMoveFrequency = 40;
+        let invaderShootTimer = 0;
+        let invaderShootFrequency = 30;
+        let invaderShootProbability = 0.5;
+        let invaderHorizontalSpeed = 15;
 
         // Initialize invaders
         function initInvaders() {
@@ -94,7 +77,7 @@
             const startY = 100;
             const spacingX = 80;
             const spacingY = 60;
-            
+
             for (let row = 0; row < rows; row++) {
                 for (let col = 0; col < columns; col++) {
                     invaders.push({
@@ -107,14 +90,6 @@
                     });
                 }
             }
-            
-            invadersDirection = 1;
-            invadersMoveTimer = 0;
-            invadersShootTimer = 0;
-            
-            // Increase difficulty with level
-            invadersMoveInterval = Math.max(10, 40 - (level - 1) * 5);
-            invadersShootInterval = Math.max(10, 30 - (level - 1) * 5);
         }
 
         // Reset game
@@ -124,111 +99,252 @@
             score = 0;
             player.x = 600;
             player.y = 750;
-            playerBullets = [];
-            enemyBullets = [];
+            playerBullets.length = 0;
+            enemyBullets.length = 0;
+            invaderDirection = 1;
+            invaderMoveTimer = 0;
+            invaderShootTimer = 0;
+            invaderMoveFrequency = 40;
+            invaderShootFrequency = 30;
+            invaderShootProbability = 0.5;
+            invaderHorizontalSpeed = 15;
             initInvaders();
-            gameState = 'playing';
         }
 
-        // Next level
-        function nextLevel() {
+        // Start new level
+        function startNewLevel() {
             level++;
-            playerBullets = [];
-            enemyBullets = [];
+            playerBullets.length = 0;
+            enemyBullets.length = 0;
+            invaderDirection = 1;
+            invaderMoveTimer = 0;
+            invaderShootTimer = 0;
+            
+            // Increase difficulty
+            invaderHorizontalSpeed += 15;
+            invaderMoveFrequency = Math.max(10, invaderMoveFrequency - 5);
+            invaderShootFrequency = Math.max(10, invaderShootFrequency - 5);
+            invaderShootProbability = Math.min(0.9, invaderShootProbability + 0.05);
+            
             initInvaders();
         }
 
-        // Input handling
-        document.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            
-            if (gameState === 'menu' && e.code === 'Space') {
-                resetGame();
-            } else if (gameState === 'gameOver' && e.code === 'KeyR') {
-                resetGame();
-            }
-        });
+        // Draw triangle (player ship)
+        function drawTriangle(x, y, width, height, color) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x + width / 2, y);
+            ctx.lineTo(x, y + height);
+            ctx.lineTo(x + width, y + height);
+            ctx.closePath();
+            ctx.fill();
+        }
 
-        document.addEventListener('keyup', (e) => {
-            keys[e.code] = false;
-        });
+        // Draw rectangle
+        function drawRect(x, y, width, height, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, width, height);
+        }
+
+        // Draw text
+        function drawText(text, x, y, font, color, align = 'center') {
+            ctx.fillStyle = color;
+            ctx.font = font;
+            ctx.textAlign = align;
+            ctx.fillText(text, x, y);
+        }
+
+        // Menu state rendering
+        function renderMenu() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawText('SPACE INVADERS', canvas.width / 2, 300, 'bold 72px Arial', '#FF8000');
+            drawText('AI-Generated Game', canvas.width / 2, 350, '30px Arial', '#CCCCCC');
+            drawText('Press SPACE to Start', canvas.width / 2, 450, 'bold 40px Arial', '#00FF00');
+            drawText('Press H for How to Play', canvas.width / 2, 510, '30px Arial', '#FFD700');
+            drawText('Controls: AD/Arrow Keys to move, SPACE to shoot', canvas.width / 2, 580, '25px Arial', '#B3B3FF');
+            drawText('Kill them all! You have 3 lives.', canvas.width / 2, 630, '25px Arial', '#FFFF00');
+            
+            // Credits
+            drawText('Developer: AI & megadigo (megadigo@gmail.com)', canvas.width / 2, 700, '18px Arial', '#666666');
+            drawText('Contributors: Claude Sonnet 4.5, Graphics Oryx (www.oryxdesignlab.com)', canvas.width / 2, 730, '16px Arial', '#555555');
+        }
+
+        // How to Play state rendering
+        function renderHowToPlay() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawText('HOW TO PLAY SPACE INVADERS', canvas.width / 2, 80, 'bold 56px Arial', '#FF8000');
+            
+            drawText('OBJECTIVE', canvas.width / 2, 150, 'bold 32px Arial', '#00FF00');
+            drawText('Defend Earth from the alien invasion! Destroy all invaders to advance to the next level.', canvas.width / 2, 190, '22px Arial', '#FFFFFF');
+            drawText("Don't let them reach the bottom or it's game over!", canvas.width / 2, 220, '22px Arial', '#FFFFFF');
+            
+            drawText('CONTROLS', canvas.width / 2, 280, 'bold 32px Arial', '#00FF00');
+            drawText('A or Left Arrow - Move your ship left', canvas.width / 2, 320, '22px Arial', '#FFFFFF');
+            drawText('D or Right Arrow - Move your ship right', canvas.width / 2, 350, '22px Arial', '#FFFFFF');
+            drawText('SPACE - Shoot lasers at the invaders', canvas.width / 2, 380, '22px Arial', '#FFFFFF');
+            
+            drawText('GAMEPLAY MECHANICS', canvas.width / 2, 440, 'bold 32px Arial', '#00FF00');
+            drawText('• Player Ship (Blue Triangle) - Your last line of defense', canvas.width / 2, 480, '22px Arial', '#0080FF');
+            drawText('• Invaders (Red Squares) - 50 enemies in formation moving as a swarm', canvas.width / 2, 510, '22px Arial', '#FF0000');
+            drawText('• Score - Earn 100 points for each invader destroyed', canvas.width / 2, 540, '22px Arial', '#FFFF00');
+            drawText('• Lives - Start with 3 lives, lose one when hit by enemy fire', canvas.width / 2, 570, '22px Arial', '#FFFF00');
+            drawText('• Difficulty - Invaders move and shoot faster each level!', canvas.width / 2, 600, '22px Arial', '#FF8000');
+            
+            drawText('STRATEGY TIPS', canvas.width / 2, 660, 'bold 32px Arial', '#00FF00');
+            drawText('Focus on invaders at the bottom - they\'re closest to you and shoot first', canvas.width / 2, 700, '22px Arial', '#00FFFF');
+            drawText('Keep moving to dodge enemy fire and create better shooting angles', canvas.width / 2, 730, '22px Arial', '#00FFFF');
+            
+            drawText('Press ESC to Return to Menu', canvas.width / 2, 780, 'bold 26px Arial', '#FFD700');
+        }
+
+        // Playing state rendering
+        function renderPlaying() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw HUD
+            drawText(`Lives: ${lives}`, 50, 50, 'bold 50px Arial', '#FFFF00', 'left');
+            drawText(`Level: ${level}`, 1150, 50, 'bold 50px Arial', '#00FFFF', 'right');
+            drawText('SPACE INVADERS', canvas.width / 2, 50, 'bold 40px Arial', '#FF8000', 'center');
+            drawText(`Score: ${score}`, canvas.width / 2, 90, '30px Arial', '#FFFFFF', 'center');
+
+            // Draw player
+            drawTriangle(player.x, player.y, player.width, player.height, player.color);
+
+            // Draw invaders
+            for (const invader of invaders) {
+                if (invader.alive) {
+                    drawRect(invader.x, invader.y, invader.width, invader.height, invader.color);
+                }
+            }
+
+            // Draw player bullets
+            for (const bullet of playerBullets) {
+                drawRect(bullet.x, bullet.y, bullet.width, bullet.height, '#00FF00');
+            }
+
+            // Draw enemy bullets
+            for (const bullet of enemyBullets) {
+                drawRect(bullet.x, bullet.y, bullet.width, bullet.height, '#FFFF00');
+            }
+        }
+
+        // Game Over state rendering
+        function renderGameOver() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawText('GAME OVER', canvas.width / 2, 300, 'bold 80px Arial', '#FF0000');
+            drawText(`Final Level: ${level}`, canvas.width / 2, 400, '40px Arial', '#FFFF00');
+            drawText(`Final Score: ${score}`, canvas.width / 2, 450, '40px Arial', '#FFFF00');
+            drawText('Press R to Restart', canvas.width / 2, 550, '30px Arial', '#00FF00');
+
+            // Achievement message
+            let achievementMessage = 'Good try! Practice makes perfect!';
+            if (level >= 10) {
+                achievementMessage = "Amazing! You're an invaders master!";
+            } else if (level >= 5) {
+                achievementMessage = "Great job! You're getting good at this!";
+            }
+            drawText(achievementMessage, canvas.width / 2, 650, '25px Arial', '#B3B3FF');
+        }
 
         // Update player
         function updatePlayer() {
-            if (keys['KeyA'] || keys['ArrowLeft']) {
-                player.x = Math.max(0, player.x - player.speed);
+            // Movement
+            if ((keys['KeyA'] || keys['ArrowLeft']) && player.x > 0) {
+                player.x -= player.speed;
             }
-            if (keys['KeyD'] || keys['ArrowRight']) {
-                player.x = Math.min(1150, player.x + player.speed);
+            if ((keys['KeyD'] || keys['ArrowRight']) && player.x < canvas.width - player.width) {
+                player.x += player.speed;
             }
-            
+
             // Shooting
             if (keys['Space']) {
-                // Can shoot continuously (no cooldown)
-                if (frameCount % 10 === 0) { // Limit fire rate slightly
+                // Continuous shooting - spawn bullet every few frames
+                if (!player.lastShotFrame || Date.now() - player.lastShotFrame > 200) {
                     playerBullets.push({
                         x: player.x + player.width / 2 - 2.5,
                         y: player.y,
                         width: 5,
                         height: 20,
-                        speed: 8,
-                        color: '#00FF00'
+                        speed: 8
                     });
-                    try { audio.playerShoot.play(); } catch(e) {}
+                    player.lastShotFrame = Date.now();
+                }
+            }
+        }
+
+        // Update bullets
+        function updateBullets() {
+            // Update player bullets
+            for (let i = playerBullets.length - 1; i >= 0; i--) {
+                playerBullets[i].y -= playerBullets[i].speed;
+                if (playerBullets[i].y < 0) {
+                    playerBullets.splice(i, 1);
+                }
+            }
+
+            // Update enemy bullets
+            for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                enemyBullets[i].y += enemyBullets[i].speed;
+                if (enemyBullets[i].y > canvas.height) {
+                    enemyBullets.splice(i, 1);
                 }
             }
         }
 
         // Update invaders
         function updateInvaders() {
-            invadersMoveTimer++;
-            
-            if (invadersMoveTimer >= invadersMoveInterval) {
-                invadersMoveTimer = 0;
-                
-                // Check if need to descend
-                let needsDescend = false;
-                for (let invader of invaders) {
+            invaderMoveTimer++;
+
+            if (invaderMoveTimer >= invaderMoveFrequency) {
+                invaderMoveTimer = 0;
+
+                // Check if any invader hits the edge
+                let hitEdge = false;
+                for (const invader of invaders) {
                     if (!invader.alive) continue;
                     
-                    if ((invadersDirection > 0 && invader.x + invader.width >= 1200) ||
-                        (invadersDirection < 0 && invader.x <= 0)) {
-                        needsDescend = true;
+                    if (invaderDirection === 1 && invader.x + invader.width + invaderHorizontalSpeed > canvas.width) {
+                        hitEdge = true;
+                        break;
+                    }
+                    if (invaderDirection === -1 && invader.x - invaderHorizontalSpeed < 0) {
+                        hitEdge = true;
                         break;
                     }
                 }
-                
-                if (needsDescend) {
-                    invadersDirection *= -1;
-                    for (let invader of invaders) {
+
+                if (hitEdge) {
+                    // Move down and reverse direction
+                    invaderDirection *= -1;
+                    for (const invader of invaders) {
                         if (invader.alive) {
                             invader.y += 20;
                         }
                     }
                 } else {
-                    for (let invader of invaders) {
+                    // Move horizontally
+                    for (const invader of invaders) {
                         if (invader.alive) {
-                            invader.x += 15 * invadersDirection;
+                            invader.x += invaderDirection * invaderHorizontalSpeed;
                         }
                     }
                 }
-                
-                // Check if invaders reached bottom
-                for (let invader of invaders) {
-                    if (invader.alive && invader.y + invader.height > 700) {
-                        gameState = 'gameOver';
-                        return;
-                    }
-                }
             }
-            
-            // Invader shooting
-            invadersShootTimer++;
-            if (invadersShootTimer >= invadersShootInterval) {
-                invadersShootTimer = 0;
-                
-                // Random invader shoots
-                if (Math.random() < 0.5) {
+
+            // Enemy shooting
+            invaderShootTimer++;
+            if (invaderShootTimer >= invaderShootFrequency) {
+                invaderShootTimer = 0;
+
+                if (Math.random() < invaderShootProbability) {
+                    // Get all alive invaders
                     const aliveInvaders = invaders.filter(inv => inv.alive);
                     if (aliveInvaders.length > 0) {
                         const shooter = aliveInvaders[Math.floor(Math.random() * aliveInvaders.length)];
@@ -237,203 +353,146 @@
                             y: shooter.y + shooter.height,
                             width: 5,
                             height: 20,
-                            speed: 3,
-                            color: '#FFFF00'
+                            speed: 3
                         });
                     }
                 }
             }
-            
-            // Check if all invaders destroyed
-            if (invaders.every(inv => !inv.alive)) {
-                nextLevel();
-            }
         }
 
-        // Update bullets
-        function updateBullets() {
-            // Player bullets
-            for (let i = playerBullets.length - 1; i >= 0; i--) {
-                playerBullets[i].y -= playerBullets[i].speed;
-                
-                if (playerBullets[i].y < 0) {
-                    playerBullets.splice(i, 1);
-                }
-            }
-            
-            // Enemy bullets
-            for (let i = enemyBullets.length - 1; i >= 0; i--) {
-                enemyBullets[i].y += enemyBullets[i].speed;
-                
-                if (enemyBullets[i].y > 800) {
-                    enemyBullets.splice(i, 1);
-                }
-            }
-        }
-
-        // Collision detection
+        // Check collisions
         function checkCollisions() {
             // Player bullets vs invaders
             for (let i = playerBullets.length - 1; i >= 0; i--) {
                 const bullet = playerBullets[i];
-                
-                for (let invader of invaders) {
+                for (const invader of invaders) {
                     if (!invader.alive) continue;
-                    
+
                     if (bullet.x < invader.x + invader.width &&
                         bullet.x + bullet.width > invader.x &&
                         bullet.y < invader.y + invader.height &&
                         bullet.y + bullet.height > invader.y) {
-                        
+                        // Hit!
                         invader.alive = false;
                         playerBullets.splice(i, 1);
                         score += 100;
-                        try { audio.enemyDie.play(); } catch(e) {}
                         break;
                     }
                 }
             }
-            
+
             // Enemy bullets vs player
             for (let i = enemyBullets.length - 1; i >= 0; i--) {
                 const bullet = enemyBullets[i];
-                
                 if (bullet.x < player.x + player.width &&
                     bullet.x + bullet.width > player.x &&
                     bullet.y < player.y + player.height &&
                     bullet.y + bullet.height > player.y) {
-                    
-                    enemyBullets.splice(i, 1);
+                    // Player hit!
                     lives--;
-                    try { audio.playerDie.play(); } catch(e) {}
-                    
+                    enemyBullets.splice(i, 1);
                     if (lives <= 0) {
                         gameState = 'gameOver';
                     }
                 }
             }
-        }
 
-        // Draw player (triangle)
-        function drawPlayer() {
-            ctx.fillStyle = player.color;
-            ctx.beginPath();
-            ctx.moveTo(player.x + player.width / 2, player.y);
-            ctx.lineTo(player.x, player.y + player.height);
-            ctx.lineTo(player.x + player.width, player.y + player.height);
-            ctx.closePath();
-            ctx.fill();
-        }
-
-        // Draw invaders
-        function drawInvaders() {
-            for (let invader of invaders) {
-                if (invader.alive) {
-                    ctx.fillStyle = invader.color;
-                    ctx.fillRect(invader.x, invader.y, invader.width, invader.height);
+            // Check if enemies reached bottom
+            for (const invader of invaders) {
+                if (invader.alive && invader.y + invader.height > canvas.height - 100) {
+                    gameState = 'gameOver';
+                    break;
                 }
             }
-        }
 
-        // Draw bullets
-        function drawBullets() {
-            for (let bullet of playerBullets) {
-                ctx.fillStyle = bullet.color;
-                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
-            }
-            
-            for (let bullet of enemyBullets) {
-                ctx.fillStyle = bullet.color;
-                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            // Check if all enemies destroyed
+            const aliveCount = invaders.filter(inv => inv.alive).length;
+            if (aliveCount === 0) {
+                startNewLevel();
             }
         }
 
-        // Draw text centered
-        function drawTextCentered(text, y, font, color) {
-            ctx.font = font;
-            ctx.fillStyle = color;
-            ctx.textAlign = 'center';
-            ctx.fillText(text, 600, y);
-        }
-
-        // Draw text aligned
-        function drawText(text, x, y, font, color, align = 'left') {
-            ctx.font = font;
-            ctx.fillStyle = color;
-            ctx.textAlign = align;
-            ctx.fillText(text, x, y);
-        }
-
-        // Draw menu
-        function drawMenu() {
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, 1200, 800);
-            
-            drawTextCentered('SPACE INVADERS', 300, 'bold 72px Arial', '#FF8000');
-            drawTextCentered('AI-Generated Game', 350, '30px Arial', '#CCCCCC');
-            drawTextCentered('Press SPACE to Start', 450, 'bold 40px Arial', '#00FF00');
-            drawTextCentered('Controls: AD/Arrow Keys to move, SPACE to shoot', 550, '25px Arial', '#B3B3FF');
-            drawTextCentered('Kill them all! You have 3 lives.', 600, '25px Arial', '#FFFF00');
-        }
-
-        // Draw game
-        function drawGame() {
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, 1200, 800);
-            
-            // HUD
-            drawText(`Lives: ${lives}`, 50, 50, 'bold 50px Arial', '#FFFF00', 'left');
-            drawText(`Level: ${level}`, 1150, 50, 'bold 50px Arial', '#00FFFF', 'right');
-            drawTextCentered('SPACE INVADERS', 50, 'bold 40px Arial', '#FF8000');
-            drawTextCentered(`Score: ${score}`, 90, '30px Arial', '#FFFFFF');
-            
-            // Entities
-            drawPlayer();
-            drawInvaders();
-            drawBullets();
-        }
-
-        // Draw game over
-        function drawGameOver() {
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, 1200, 800);
-            
-            drawTextCentered('GAME OVER', 300, 'bold 80px Arial', '#FF0000');
-            drawTextCentered(`Final Level: ${level}`, 400, '40px Arial', '#FFFF00');
-            drawTextCentered(`Final Score: ${score}`, 450, '40px Arial', '#FFFF00');
-            drawTextCentered('Press R to Restart', 550, '30px Arial', '#00FF00');
-            
-            // Achievement message
-            let message = 'Good try! Practice makes perfect!';
-            if (level >= 10) {
-                message = "Amazing! You're an invaders master!";
-            } else if (level >= 5) {
-                message = "Great job! You're getting good at this!";
+        // Update game
+        function update() {
+            if (gameState === 'playing') {
+                updatePlayer();
+                updateBullets();
+                updateInvaders();
+                checkCollisions();
             }
-            drawTextCentered(message, 650, '25px Arial', '#B3B3FF');
+        }
+
+        // Render game
+        function render() {
+            switch (gameState) {
+                case 'menu':
+                    renderMenu();
+                    break;
+                case 'howToPlay':
+                    renderHowToPlay();
+                    break;
+                case 'playing':
+                    renderPlaying();
+                    break;
+                case 'gameOver':
+                    renderGameOver();
+                    break;
+            }
         }
 
         // Game loop
         function gameLoop() {
-            frameCount++;
-            
-            if (gameState === 'menu') {
-                drawMenu();
-            } else if (gameState === 'playing') {
-                updatePlayer();
-                updateInvaders();
-                updateBullets();
-                checkCollisions();
-                drawGame();
-            } else if (gameState === 'gameOver') {
-                drawGameOver();
-            }
-            
+            update();
+            render();
             requestAnimationFrame(gameLoop);
+        }
+
+        // Handle key down
+        function handleKeyDown(e) {
+            keys[e.code] = true;
+
+            // Prevent default browser behaviors for game keys
+            if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS'].includes(e.code)) {
+                e.preventDefault();
+            }
+
+            // State transitions
+            if (gameState === 'menu') {
+                if (e.code === 'Space') {
+                    gameState = 'playing';
+                    resetGame();
+                } else if (e.code === 'KeyH') {
+                    gameState = 'howToPlay';
+                }
+            } else if (gameState === 'howToPlay') {
+                if (e.code === 'Escape') {
+                    gameState = 'menu';
+                } else if (e.code === 'Space') {
+                    gameState = 'playing';
+                    resetGame();
+                }
+            } else if (gameState === 'gameOver') {
+                if (e.code === 'KeyR') {
+                    gameState = 'playing';
+                    resetGame();
+                }
+            }
+        }
+
+        // Handle key up
+        function handleKeyUp(e) {
+            keys[e.code] = false;
+        }
+
+        // Initialize keyboard listeners
+        function initKeyboardListeners() {
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
         }
 
         // Start game
         initInvaders();
+        initKeyboardListeners();
         gameLoop();
     </script>
 </body>
