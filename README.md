@@ -82,35 +82,6 @@ All GAML files conform to the official schema:
 
 ---
 
-## 🛠️ GAML Validator
-
-The project includes a validation tool to ensure GAML files meet the specification.
-
-### Installation
-```bash
-cd validator
-npm install
-```
-
-### Usage
-```bash
-npm run validate
-```
-
-### Validation Results
-The validator checks all GAML files and generates reports in `validator/results/`:
-- Individual validation reports for each game
-- Summary report with overall validation status
-
-### What It Validates
-- YAML syntax correctness
-- Required fields presence
-- Data type validation
-- Schema compliance
-- Structure integrity
-
----
-
 ## 🚀 Quick Start
 
 ### Playing the Games
@@ -126,13 +97,6 @@ The validator checks all GAML files and generates reports in `validator/results/
    - **RPG Dungeon**: `games/rpg_dungeon/index.html`
 
 3. No build process, no dependencies, no setup required!
-
-### Validating GAML Files
-```bash
-cd validator
-npm install
-npm run validate
-```
 
 ---
 
@@ -174,14 +138,6 @@ OnePromptGame/
 │       ├── index.html                      # Complete game (single file)
 │       ├── rpg_dungeon_metadata.gaml       # GAML specification
 │       └── assets/                         # Optional assets
-└── validator/
-    ├── package.json
-    ├── validate-gaml.js                    # GAML validator
-    └── results/                            # Validation reports
-        ├── pacman_metadata-validation.json
-        ├── rpg_dungeon_metadata-validation.json
-        ├── space_invader_metadata-validation.json
-        └── validation-summary.json
 ```
 
 ---
@@ -245,19 +201,17 @@ GAML files include:
 Contributions are welcome! Here's how you can help:
 
 1. **Add New Games**: Create GAML specifications for other classic games
-2. **Improve Validator**: Enhance validation rules and error reporting
+2. **Improve Documentation**: Enhance guides and examples
 3. **Extend GAML Schema**: Propose new metadata fields
 4. **Bug Fixes**: Report and fix issues in existing games
-5. **Documentation**: Improve guides and examples
 
 ### Development Workflow
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/new-game`)
 3. Create GAML metadata file
 4. Generate game using AI
-5. Validate GAML file
-6. Test thoroughly
-7. Submit pull request
+5. Test thoroughly
+6. Submit pull request
 
 ---
 
@@ -295,7 +249,6 @@ This project is licensed under the MIT License - see individual game files for d
 4. **Comprehensive Specs**: GAML provides complete game definitions
 5. **Educational**: Learn game development through structured metadata
 6. **Reproducible**: Same GAML + AI = Same game
-7. **Validated**: All metadata files pass schema validation
 
 ---
 
