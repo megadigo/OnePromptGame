@@ -64,6 +64,9 @@
           "render": "fillRect"
         },
         "exit_stairs": {
+          "sprite_id": 35,
+          "render_type": "sprite",
+          "sprite_description": "Brown/orange exit stairs",
           "color": "10",
           "spawn_rule": "farthest_room_from_player",
           "requires": "none",
@@ -81,7 +84,9 @@
       "sprite": {
         "id": 1,
         "width": 8,
-        "height": 8
+        "height": 8,
+        "render_type": "sprite",
+        "description": "White/gray hero character sprite"
       },
       "position": {
         "spawn": "first_room_center",
@@ -109,6 +114,8 @@
           "name": "Rat",
           "type": "rat",
           "sprite_id": 16,
+          "render_type": "sprite",
+          "sprite_description": "Red small rat enemy",
           "health": 3,
           "attack": 1,
           "defense": 0,
@@ -127,6 +134,8 @@
           "name": "Skeleton",
           "type": "skeleton",
           "sprite_id": 17,
+          "render_type": "sprite",
+          "sprite_description": "Yellow/orange skeleton enemy",
           "health": 6,
           "attack": 2,
           "defense": 1,
@@ -145,6 +154,8 @@
           "name": "Orc",
           "type": "orc",
           "sprite_id": 18,
+          "render_type": "sprite",
+          "sprite_description": "Green large orc enemy",
           "health": 10,
           "attack": 4,
           "defense": 2,
@@ -163,6 +174,8 @@
           "name": "Dragon",
           "type": "dragon",
           "sprite_id": 19,
+          "render_type": "sprite",
+          "sprite_description": "Red/dark dragon boss enemy",
           "health": 20,
           "attack": 6,
           "defense": 3,
@@ -190,14 +203,18 @@
       "list": [
         {
           "name": "health_potion",
-          "sprite_id": 32,
+          "sprite_id": 33,
+          "render_type": "sprite",
+          "sprite_description": "Pink/red potion bottle",
           "effect": "restore_10_health",
           "spawn_chance": 0.3,
           "spawn_per_level": {"min": 1, "max": 2}
         },
         {
           "name": "gold_pile",
-          "sprite_id": 33,
+          "sprite_id": 32,
+          "render_type": "sprite",
+          "sprite_description": "Yellow/gold coin pile",
           "effect": "add_gold",
           "value": {"min": 5, "max": 15},
           "spawn_chance": 0.4,
@@ -206,6 +223,8 @@
         {
           "name": "chest",
           "sprite_id": 34,
+          "render_type": "sprite",
+          "sprite_description": "Yellow/brown treasure chest",
           "effect": "loot_container",
           "contains": {
             "gold": {"min": 10, "max": 30},
@@ -423,7 +442,8 @@
       "Use simple line-of-sight algorithm (Bresenham or distance-based)",
       "Enemy AI: chase player when in detection range using simple pathfinding",
       "Combat: automatic melee when adjacent, with damage calculation",
-      "Use PICO-8 color palette for entities (sprites or text glyphs)",
+      "Use PICO-8 sprites (spr() function) for all entities and items",
+      "Sprite sheet includes player, 4 enemy types, 3 item types, and exit stairs",
       "Save state not required (roguelike permadeath)",
       "Keep within PICO-8 token limits (~8192 tokens)"
     ],
@@ -442,8 +462,8 @@
     "ui_layout": [
       "Top 16 pixels: HUD (HP, LVL, FLOOR, GOLD)",
       "Bottom 112 pixels: Dungeon view (16x14 visible tiles)",
-      "Use print() for text rendering",
-      "Use symbols: @ = player, r/s/o/D = enemies, $ = gold, ! = potion, = = chest, > = stairs"
+      "Use spr() for sprite rendering",
+      "Sprites: 1=player, 16-19=enemies, 32=gold, 33=potion, 34=chest, 35=stairs"
     ],
     
     "code_structure": [

@@ -1,321 +1,268 @@
 pico-8 cartridge // http://www.pico-8.com
-version 42
+version 41
 __lua__
 -- labyrinth descent
--- a roguelike dungeon crawler
+-- roguelike dungeon crawler
+
+-- game constants
+gw,gh=16,14
+tw=8
+mapw,maph=16,16
+
+-- game state
+state="title"
+floor=1
+maxfloor=10
+
+-- player
+p={
+ x=0,y=0,
+ hp=20,maxhp=20,
+ atk=3,def=1,
+ lvl=1,xp=0,xpnext=10,
+ gold=0,potions=2
+}
+
+-- dungeon
+dng={}
+rooms={}
+
+-- entities
+enemies={}
+items={}
+
+-- fog of war
+visible={}
+explored={}
 
 function _init()
  init_game()
 end
 
 function init_game()
- -- game state
  state="title"
  floor=1
- lvluptimer=0
- 
- -- player
  p={
   x=0,y=0,
   hp=20,maxhp=20,
   atk=3,def=1,
-  lvl=1,exp=0,
-  gold=0,pots=2
+  lvl=1,xp=0,xpnext=10,
+  gold=0,potions=2
  }
- 
- -- dungeon grid (16x16)
- dng={}
- for i=0,15 do
-  dng[i]={}
-  for j=0,15 do
-   dng[i][j]=0 -- 0=wall
-  end
- end
- 
- -- entities
- enemies={}
- items={}
- 
- -- rooms for generation
- rooms={}
- 
- -- generate first level
- gen_level()
 end
 
-function gen_level()
- -- clear dungeon
- for i=0,15 do
-  for j=0,15 do
-   dng[i][j]=0
+function start_game()
+ state="playing"
+ floor=1
+ gen_dungeon()
+end
+
+function next_floor()
+ floor+=1
+ if floor>maxfloor then
+  state="victory"
+  return
+ end
+ gen_dungeon()
+end
+
+-- dungeon generation
+function gen_dungeon()
+ -- init dungeon (0=wall,1=floor,2=exit)
+ dng={}
+ for y=0,maph-1 do
+  dng[y]={}
+  for x=0,mapw-1 do
+   dng[y][x]=0
   end
  end
  
+ -- generate rooms
  rooms={}
- enemies={}
- items={}
+ local rcount=5+flr(rnd(3))
+ for i=1,rcount do
+  local tries=50
+  while tries>0 do
+   local rw=3+flr(rnd(5))
+   local rh=3+flr(rnd(5))
+   local rx=1+flr(rnd(mapw-rw-2))
+   local ry=1+flr(rnd(maph-rh-2))
+   
+   -- check overlap
+   local ok=true
+   for _,r in pairs(rooms) do
+    if not (rx+rw+1<r.x or rx>r.x+r.w+1 or
+            ry+rh+1<r.y or ry>r.y+r.h+1) then
+     ok=false
+     break
+    end
+   end
+   
+   if ok then
+    add(rooms,{x=rx,y=ry,w=rw,h=rh})
+    break
+   end
+   tries-=1
+  end
+ end
  
- -- generate 5-7 rooms
- local nrooms=5+flr(rnd(3))
+ -- carve rooms
+ for _,r in pairs(rooms) do
+  for y=r.y,r.y+r.h-1 do
+   for x=r.x,r.x+r.w-1 do
+    dng[y][x]=1
+   end
+  end
+ end
  
- for r=1,nrooms do
-  local rx,ry,rw,rh
-  local tries=0
-  local valid=false
+ -- connect rooms
+ for i=1,#rooms-1 do
+  local r1=rooms[i]
+  local r2=rooms[i+1]
+  local cx1=r1.x+flr(r1.w/2)
+  local cy1=r1.y+flr(r1.h/2)
+  local cx2=r2.x+flr(r2.w/2)
+  local cy2=r2.y+flr(r2.h/2)
   
-  -- find valid room position
-  repeat
-   rx=1+flr(rnd(13))
-   ry=1+flr(rnd(13))
-   rw=3+flr(rnd(5))
-   rh=3+flr(rnd(5))
-   
-   if rx+rw<15 and ry+rh<15 then
-    valid=true
-    -- check overlap
-    for _,room in pairs(rooms) do
-     if not(rx+rw<room.x or rx>room.x+room.w or
-            ry+rh<room.y or ry>room.y+room.h) then
-      valid=false
-      break
-     end
-    end
-   end
-   
-   tries+=1
-  until valid or tries>50
+  -- horizontal corridor
+  local x1,x2=min(cx1,cx2),max(cx1,cx2)
+  for x=x1,x2 do
+   dng[cy1][x]=1
+  end
   
-  if valid then
-   -- carve room
-   for i=rx,rx+rw-1 do
-    for j=ry,ry+rh-1 do
-     dng[i][j]=1 -- floor
-    end
-   end
-   
-   add(rooms,{x=rx,y=ry,w=rw,h=rh,
-              cx=rx+flr(rw/2),
-              cy=ry+flr(rh/2)})
-   
-   -- connect to previous room
-   if #rooms>1 then
-    local prev=rooms[#rooms-1]
-    local curr=rooms[#rooms]
-    
-    -- horizontal corridor
-    local x1=min(prev.cx,curr.cx)
-    local x2=max(prev.cx,curr.cx)
-    for i=x1,x2 do
-     dng[i][prev.cy]=1
-    end
-    
-    -- vertical corridor
-    local y1=min(prev.cy,curr.cy)
-    local y2=max(prev.cy,curr.cy)
-    for j=y1,y2 do
-     dng[curr.cx][j]=1
-    end
-   end
+  -- vertical corridor
+  local y1,y2=min(cy1,cy2),max(cy1,cy2)
+  for y=y1,y2 do
+   dng[y][cx2]=1
   end
  end
  
  -- place player in first room
- if #rooms>0 then
-  p.x=rooms[1].cx
-  p.y=rooms[1].cy
- end
+ local r1=rooms[1]
+ p.x=r1.x+flr(r1.w/2)
+ p.y=r1.y+flr(r1.h/2)
  
  -- place exit in last room
- if #rooms>1 then
-  local lastroom=rooms[#rooms]
-  dng[lastroom.cx][lastroom.cy]=2 -- exit
- end
+ local rlast=rooms[#rooms]
+ local ex=rlast.x+flr(rlast.w/2)
+ local ey=rlast.y+flr(rlast.h/2)
+ dng[ey][ex]=2
  
  -- spawn enemies
- spawn_enemies()
- 
- -- spawn items
- spawn_items()
-end
-
-function spawn_enemies()
- local etypes={
-  {n="rat",s=16,hp=3,atk=1,def=0,exp=2,gold={1,3},ch=0.4},
-  {n="skeleton",s=17,hp=6,atk=2,def=1,exp=5,gold={3,7},ch=0.3},
-  {n="orc",s=18,hp=10,atk=4,def=2,exp=10,gold={5,12},ch=0.2},
-  {n="dragon",s=19,hp=20,atk=6,def=3,exp=25,gold={15,30},ch=0.1}
- }
- 
- -- scale with floor
- local floorscale=1+(floor-1)*0.2
- 
- -- spawn in rooms (skip first room)
+ enemies={}
  for i=2,#rooms do
-  local room=rooms[i]
-  local nemies=1+flr(rnd(3))
-  
-  for e=1,nemies do
-   -- pick enemy type
-   local etype=nil
-   local r=rnd()
-   for _,et in pairs(etypes) do
-    if r<et.ch then
-     etype=et
+  local r=rooms[i]
+  local ecount=1+flr(rnd(3))
+  for j=1,ecount do
+   local ex,ey
+   local tries=20
+   while tries>0 do
+    ex=r.x+flr(rnd(r.w))
+    ey=r.y+flr(rnd(r.h))
+    if dng[ey][ex]==1 and not enemy_at(ex,ey) then
      break
     end
+    tries-=1
    end
-   etype=etype or etypes[1]
    
-   -- spawn enemy
-   local ex=room.x+flr(rnd(room.w))
-   local ey=room.y+flr(rnd(room.h))
-   
-   if dng[ex][ey]==1 then
-    add(enemies,{
-     x=ex,y=ey,
-     name=etype.n,
-     s=etype.s,
-     hp=flr(etype.hp*floorscale),
-     maxhp=flr(etype.hp*floorscale),
-     atk=flr(etype.atk*floorscale),
-     def=etype.def,
-     exp=etype.exp,
-     goldmin=etype.gold[1],
-     goldmax=etype.gold[2]
-    })
+   -- select enemy type
+   local roll=rnd(1)
+   local etype="rat"
+   if roll<0.1 then
+    etype="dragon"
+   elseif roll<0.2 then
+    etype="orc"
+   elseif roll<0.5 then
+    etype="skeleton"
    end
-  end
- end
-end
-
-function spawn_items()
- -- spawn gold piles
- for i=1,2+flr(rnd(3)) do
-  local room=rooms[1+flr(rnd(#rooms))]
-  local ix=room.x+flr(rnd(room.w))
-  local iy=room.y+flr(rnd(room.h))
-  
-  if dng[ix][iy]==1 then
-   add(items,{
-    x=ix,y=iy,
-    t="gold",
-    s=33,
-    v=5+flr(rnd(11))
-   })
+   
+   add(enemies,make_enemy(etype,ex,ey))
   end
  end
  
- -- spawn potions
- for i=1,1+flr(rnd(2)) do
-  local room=rooms[1+flr(rnd(#rooms))]
-  local ix=room.x+flr(rnd(room.w))
-  local iy=room.y+flr(rnd(room.h))
-  
-  if dng[ix][iy]==1 then
-   add(items,{
-    x=ix,y=iy,
-    t="potion",
-    s=32,
-    v=10
-   })
-  end
- end
- 
- -- spawn chest
- if rnd()<0.3 then
-  local room=rooms[1+flr(rnd(#rooms))]
-  local ix=room.x+flr(rnd(room.w))
-  local iy=room.y+flr(rnd(room.h))
-  
-  if dng[ix][iy]==1 then
-   add(items,{
-    x=ix,y=iy,
-    t="chest",
-    s=34,
-    gold=10+flr(rnd(21)),
-    pot=rnd()<0.5
-   })
-  end
- end
-end
-
-function _update()
- if state=="title" then
-  if btnp(5) then
-   state="playing"
-  end
- elseif state=="playing" then
-  update_playing()
- elseif state=="levelup" then
-  lvluptimer-=1
-  if lvluptimer<=0 then
-   state="playing"
-  end
- elseif state=="gameover" or state=="victory" then
-  if btnp(5) then
-   init_game()
-  end
- end
-end
-
-function update_playing()
- local moved=false
- local dx,dy=0,0
- 
- -- movement
- if btnp(2) then dy=-1 moved=true end
- if btnp(3) then dy=1 moved=true end
- if btnp(0) then dx=-1 moved=true end
- if btnp(1) then dx=1 moved=true end
- 
- -- use potion
- if btnp(5) then
-  if p.pots>0 and p.hp<p.maxhp then
-   p.pots-=1
-   p.hp=min(p.maxhp,p.hp+10)
-   sfx(0)
-  end
- end
- 
- if moved then
-  local nx,ny=p.x+dx,p.y+dy
-  
-  -- check bounds
-  if nx>=0 and nx<=15 and ny>=0 and ny<=15 then
-   -- check wall
-   if dng[nx][ny]!=0 then
-    -- check enemy collision
-    local enemy=get_enemy_at(nx,ny)
-    if enemy then
-     -- attack enemy
-     do_combat(p,enemy)
-     enemy_turn()
-    else
-     -- move player
-     p.x=nx
-     p.y=ny
-     
-     -- check exit
-     if dng[nx][ny]==2 then
-      next_floor()
-     end
-     
-     -- check items
-     check_items()
-     
-     enemy_turn()
+ -- spawn items
+ items={}
+ local icount=3+flr(rnd(4))
+ for i=1,icount do
+  local tries=30
+  while tries>0 do
+   local ix=1+flr(rnd(mapw-2))
+   local iy=1+flr(rnd(maph-2))
+   if dng[iy][ix]==1 and not item_at(ix,iy) and not enemy_at(ix,iy) and not (ix==p.x and iy==p.y) then
+    local roll=rnd(1)
+    local itype="gold"
+    if roll<0.2 then
+     itype="chest"
+    elseif roll<0.4 then
+     itype="potion"
     end
+    add(items,{x=ix,y=iy,type=itype})
+    break
    end
+   tries-=1
   end
  end
  
- -- check game over
- if p.hp<=0 then
-  state="gameover"
+ -- init fog of war
+ visible={}
+ explored={}
+ for y=0,maph-1 do
+  visible[y]={}
+  explored[y]={}
+  for x=0,mapw-1 do
+   visible[y][x]=false
+   explored[y][x]=false
+  end
  end
+ 
+ update_visibility()
 end
 
-function get_enemy_at(x,y)
+function make_enemy(etype,x,y)
+ local e={x=x,y=y,type=etype,cd=0}
+ 
+ if etype=="rat" then
+  e.hp=3+floor*0.5
+  e.atk=1+flr(floor*0.3)
+  e.def=0
+  e.xpval=2
+  e.gold={1,3}
+  e.range=40
+  e.spr=16
+  e.col=8
+ elseif etype=="skeleton" then
+  e.hp=6+floor
+  e.atk=2+flr(floor*0.4)
+  e.def=1
+  e.xpval=5
+  e.gold={3,7}
+  e.range=50
+  e.spr=17
+  e.col=6
+ elseif etype=="orc" then
+  e.hp=10+floor*1.5
+  e.atk=4+flr(floor*0.5)
+  e.def=2
+  e.xpval=10
+  e.gold={5,12}
+  e.range=60
+  e.spr=18
+  e.col=3
+ elseif etype=="dragon" then
+  e.hp=20+floor*2
+  e.atk=6+floor
+  e.def=3
+  e.xpval=25
+  e.gold={15,30}
+  e.range=70
+  e.spr=19
+  e.col=8
+ end
+ 
+ return e
+end
+
+function enemy_at(x,y)
  for e in all(enemies) do
   if e.x==x and e.y==y then
    return e
@@ -324,144 +271,266 @@ function get_enemy_at(x,y)
  return nil
 end
 
+function item_at(x,y)
+ for i in all(items) do
+  if i.x==x and i.y==y then
+   return i
+  end
+ end
+ return nil
+end
+
+-- visibility
+function update_visibility()
+ for y=0,maph-1 do
+  for x=0,mapw-1 do
+   visible[y][x]=false
+  end
+ end
+ 
+ local vrange=6
+ for dy=-vrange,vrange do
+  for dx=-vrange,vrange do
+   local tx=p.x+dx
+   local ty=p.y+dy
+   if tx>=0 and tx<mapw and ty>=0 and ty<maph then
+    local dist=sqrt(dx*dx+dy*dy)
+    if dist<=vrange and has_los(p.x,p.y,tx,ty) then
+     visible[ty][tx]=true
+     explored[ty][tx]=true
+    end
+   end
+  end
+ end
+end
+
+function has_los(x0,y0,x1,y1)
+ local dx=abs(x1-x0)
+ local dy=abs(y1-y0)
+ local sx=x0<x1 and 1 or -1
+ local sy=y0<y1 and 1 or -1
+ local err=dx-dy
+ 
+ while true do
+  if x0==x1 and y0==y1 then
+   return true
+  end
+  
+  if dng[y0] and dng[y0][x0]==0 then
+   return false
+  end
+  
+  local e2=2*err
+  if e2>-dy then
+   err-=dy
+   x0+=sx
+  end
+  if e2<dx then
+   err+=dx
+   y0+=sy
+  end
+ end
+end
+
+-- update
+function _update()
+ if state=="title" then
+  if btnp(5) then
+   start_game()
+  end
+ elseif state=="playing" then
+  update_playing()
+ elseif state=="levelup" then
+  update_levelup()
+ elseif state=="gameover" then
+  if btnp(5) then
+   init_game()
+   start_game()
+  end
+ elseif state=="victory" then
+  if btnp(5) then
+   init_game()
+  end
+ end
+end
+
+lvlupt=0
+function update_levelup()
+ lvlupt+=1
+ if lvlupt>=60 then
+  state="playing"
+  lvlupt=0
+ end
+end
+
+function update_playing()
+ -- player input
+ local moved=false
+ if btnp(0) then moved=try_move(-1,0) end
+ if btnp(1) then moved=try_move(1,0) end
+ if btnp(2) then moved=try_move(0,-1) end
+ if btnp(3) then moved=try_move(0,1) end
+ 
+ -- use potion
+ if btnp(5) and p.potions>0 and p.hp<p.maxhp then
+  p.hp=min(p.hp+10,p.maxhp)
+  p.potions-=1
+  moved=true
+ end
+ 
+ -- enemy turn
+ if moved then
+  enemy_turn()
+  update_visibility()
+ end
+end
+
+function try_move(dx,dy)
+ local nx=p.x+dx
+ local ny=p.y+dy
+ 
+ -- bounds check
+ if nx<0 or nx>=mapw or ny<0 or ny>=maph then
+  return false
+ end
+ 
+ -- wall check
+ if dng[ny][nx]==0 then
+  return false
+ end
+ 
+ -- enemy check
+ local e=enemy_at(nx,ny)
+ if e then
+  do_combat(p,e)
+  return true
+ end
+ 
+ -- move
+ p.x=nx
+ p.y=ny
+ 
+ -- check exit
+ if dng[ny][nx]==2 then
+  next_floor()
+  return true
+ end
+ 
+ -- pick up items
+ local itm=item_at(nx,ny)
+ if itm then
+  pickup_item(itm)
+  del(items,itm)
+ end
+ 
+ return true
+end
+
+function pickup_item(itm)
+ if itm.type=="gold" then
+  p.gold+=5+flr(rnd(11))
+ elseif itm.type=="potion" then
+  p.potions+=1
+ elseif itm.type=="chest" then
+  p.gold+=10+flr(rnd(21))
+  if rnd(1)<0.5 then
+   p.potions+=1
+  end
+ end
+end
+
 function do_combat(attacker,defender)
  local dmg=max(1,attacker.atk-defender.def)
  defender.hp-=dmg
  
  if defender.hp<=0 then
   if defender==p then
-   -- player died
    state="gameover"
   else
    -- enemy died
+   p.xp+=defender.xpval
+   p.gold+=defender.gold[1]+flr(rnd(defender.gold[2]-defender.gold[1]+1))
    del(enemies,defender)
-   
-   -- grant exp
-   p.exp+=defender.exp
-   
-   -- drop gold
-   p.gold+=defender.goldmin+flr(rnd(defender.goldmax-defender.goldmin+1))
-   
-   -- check level up
    check_levelup()
-   
-   sfx(1)
   end
  end
 end
 
 function check_levelup()
- local expneeded=p.lvl*10
- 
- if p.exp>=expneeded then
-  p.exp-=expneeded
+ while p.xp>=p.xpnext do
   p.lvl+=1
+  p.xp-=p.xpnext
+  p.xpnext=10*p.lvl
   p.maxhp+=5
   p.hp=p.maxhp
   p.atk+=1
   p.def+=1
-  
   state="levelup"
-  lvluptimer=60
-  
-  sfx(2)
+  lvlupt=0
  end
 end
 
 function enemy_turn()
  for e in all(enemies) do
-  -- simple ai: move toward player if close
-  local dist=abs(e.x-p.x)+abs(e.y-p.y)
+  if e.cd>0 then
+   e.cd-=1
+  end
   
-  if dist<=6 then
-   local dx=sgn(p.x-e.x)
-   local dy=sgn(p.y-e.y)
-   
-   -- try to move
-   local moved=false
-   if abs(p.x-e.x)>abs(p.y-e.y) then
-    if try_enemy_move(e,dx,0) then
-     moved=true
-    elseif try_enemy_move(e,0,dy) then
-     moved=true
-    end
-   else
-    if try_enemy_move(e,0,dy) then
-     moved=true
-    elseif try_enemy_move(e,dx,0) then
-     moved=true
-    end
-   end
+  -- check if visible
+  if not visible[e.y] or not visible[e.y][e.x] then
+   goto continue
   end
- end
-end
-
-function try_enemy_move(e,dx,dy)
- local nx,ny=e.x+dx,e.y+dy
- 
- if nx>=0 and nx<=15 and ny>=0 and ny<=15 then
-  if dng[nx][ny]!=0 then
-   -- check if player is there
-   if nx==p.x and ny==p.y then
+  
+  local dx=p.x-e.x
+  local dy=p.y-e.y
+  local dist=sqrt(dx*dx+dy*dy)*8
+  
+  -- in range?
+  if dist>e.range then
+   goto continue
+  end
+  
+  -- adjacent? attack!
+  if abs(dx)<=1 and abs(dy)<=1 and (dx!=0 or dy!=0) then
+   if e.cd==0 then
     do_combat(e,p)
-    return true
+    e.cd=20
    end
-   
-   -- check if another enemy is there
-   if not get_enemy_at(nx,ny) then
-    e.x=nx
-    e.y=ny
-    return true
-   end
+   goto continue
   end
- end
- 
- return false
-end
-
-function check_items()
- for item in all(items) do
-  if item.x==p.x and item.y==p.y then
-   if item.t=="gold" then
-    p.gold+=item.v
-    sfx(3)
-   elseif item.t=="potion" then
-    p.pots+=1
-    sfx(0)
-   elseif item.t=="chest" then
-    p.gold+=item.gold
-    if item.pot then
-     p.pots+=1
-    end
-    sfx(3)
-   end
-   
-   del(items,item)
+  
+  -- move toward player
+  local mx=0
+  local my=0
+  if abs(dx)>abs(dy) then
+   mx=dx>0 and 1 or -1
+  else
+   my=dy>0 and 1 or -1
   end
+  
+  local nx=e.x+mx
+  local ny=e.y+my
+  
+  if nx>=0 and nx<mapw and ny>=0 and ny<maph and dng[ny][nx]>0 and not enemy_at(nx,ny) then
+   e.x=nx
+   e.y=ny
+  end
+  
+  ::continue::
  end
 end
 
-function next_floor()
- floor+=1
- 
- if floor>10 then
-  state="victory"
- else
-  gen_level()
-  sfx(4)
- end
-end
-
+-- draw
 function _draw()
- cls()
+ cls(0)
  
  if state=="title" then
   draw_title()
- elseif state=="playing" or state=="levelup" then
-  draw_game()
-  if state=="levelup" then
-   draw_levelup()
-  end
+ elseif state=="playing" then
+  draw_playing()
+ elseif state=="levelup" then
+  draw_playing()
+  draw_levelup()
  elseif state=="gameover" then
   draw_gameover()
  elseif state=="victory" then
@@ -471,99 +540,146 @@ end
 
 function draw_title()
  cls(0)
- print("labyrinth descent",22,40,12)
- print("press x to start",24,70,7)
- print("arrows: move",30,90,6)
- print("x: use potion",30,98,6)
+ print("labyrinth descent",20,40,12)
+ print("press ❎ to start",20,70,7)
+ print("",0,80,6)
+ print("arrows: move",32,90,6)
+ print("❎: use potion",32,98,6)
 end
 
-function draw_game()
+function draw_playing()
  -- draw hud
  rectfill(0,0,127,10,1)
  print("hp:"..p.hp.."/"..p.maxhp,2,2,8)
- print("lv:"..p.lvl,40,2,11)
- print("fl:"..floor,70,2,12)
- print("$"..p.gold,95,2,10)
- print("!"..p.pots,115,2,11)
+ print("lv:"..p.lvl,48,2,12)
+ print("f:"..floor,76,2,11)
+ print("$"..p.gold,98,2,10)
  
- -- draw dungeon (offset for hud)
- local dy=14
- 
- for i=0,15 do
-  for j=0,15 do
-   local x=i*8
-   local y=j*8+dy
+ -- draw dungeon
+ for y=0,gh-1 do
+  for x=0,gw-1 do
+   local sx=x*tw
+   local sy=y*tw+12
+   local dx=x
+   local dy=y
    
-   local tile=dng[i][j]
-   
-   if tile==0 then
-    -- wall
-    rectfill(x,y,x+7,y+7,5)
-   elseif tile==1 then
-    -- floor
-    rectfill(x,y,x+7,y+7,6)
-   elseif tile==2 then
-    -- exit
-    rectfill(x,y,x+7,y+7,6)
-    spr(48,x,y)
+   if not explored[dy] or not explored[dy][dx] then
+    rectfill(sx,sy,sx+tw-1,sy+tw-1,0)
+   elseif not visible[dy] or not visible[dy][dx] then
+    -- explored but not visible
+    local t=dng[dy][dx]
+    if t==0 then
+     rectfill(sx,sy,sx+tw-1,sy+tw-1,1)
+    else
+     rectfill(sx,sy,sx+tw-1,sy+tw-1,2)
+    end
+   else
+    -- visible
+    local t=dng[dy][dx]
+    if t==0 then
+     rectfill(sx,sy,sx+tw-1,sy+tw-1,5)
+    elseif t==2 then
+     rectfill(sx,sy,sx+tw-1,sy+tw-1,6)
+     spr(35,sx,sy)
+    else
+     rectfill(sx,sy,sx+tw-1,sy+tw-1,6)
+    end
+    
+    -- draw items
+    local itm=item_at(dx,dy)
+    if itm then
+     if itm.type=="gold" then
+      spr(32,sx,sy)
+     elseif itm.type=="potion" then
+      spr(33,sx,sy)
+     elseif itm.type=="chest" then
+      spr(34,sx,sy)
+     end
+    end
+    
+    -- draw enemies
+    local e=enemy_at(dx,dy)
+    if e then
+     spr(e.spr,sx,sy)
+    end
+    
+    -- draw player
+    if dx==p.x and dy==p.y then
+     spr(1,sx,sy)
+    end
    end
   end
  end
  
- -- draw items
- for item in all(items) do
-  local x=item.x*8
-  local y=item.y*8+dy
-  spr(item.s,x,y)
- end
- 
- -- draw enemies
- for e in all(enemies) do
-  local x=e.x*8
-  local y=e.y*8+dy
-  spr(e.s,x,y)
- end
- 
- -- draw player
- local px=p.x*8
- local py=p.y*8+dy
- spr(1,px,py)
+ -- draw potion count
+ print("pot:"..p.potions,2,120,12)
 end
 
 function draw_levelup()
- rectfill(20,50,108,78,1)
- rect(20,50,108,78,7)
- print("level up!",44,56,10)
- print("lv "..p.lvl,52,64,11)
+ rectfill(20,50,108,70,0)
+ rect(20,50,108,70,7)
+ print("level up!",40,56,10)
+ print("lv "..p.lvl,50,63,7)
 end
 
 function draw_gameover()
  cls(0)
- print("game over",44,50,8)
+ print("game over",42,50,8)
  print("floor: "..floor,46,65,7)
- print("press x to restart",22,85,7)
+ print("gold: "..p.gold,46,73,7)
+ print("press ❎ to restart",20,90,7)
 end
 
 function draw_victory()
  cls(0)
- print("victory!",46,50,11)
+ print("victory!",44,50,11)
  print("you escaped the",28,65,7)
- print("labyrinth!",42,73,7)
- print("press x to play again",18,95,6)
+ print("labyrinth!",38,73,7)
+ print("gold: "..p.gold,46,85,10)
+ print("press ❎ for menu",24,100,7)
 end
 
 __gfx__
+00000000000660000077770000333300008888000000000000aaa00000aaa00000999000000000000000000000000000000000000000000000000000000000
+00000000006776000777777003333330088888800000000000aaa0000aaaa000099a990000000000000000000000000000000000000000000000000000000000
+00700700067777607777777733333333888888880000000000aaa000aaaaaa0099aaa900000000000000000000000000000000000000000000000000000000000
+00077000077777707777777733333333888888880000000000aaa000aaaaaa009aaaaaa000000000000000000000000000000000000000000000000000000000
+00077000007777000777770003333300088888000000000000aaa0000aaaa00009aaa90000000000000000000000000000000000000000000000000000000000
+00700700000770000077700000333000008880000000000000aaa00000aa000009999000000000000000000000000000000000000000000000000000000000000
+00000000000660000066600000033000000880000000000000aaa00000aa0000009900000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00cccc00007770000ffff000088880000ddddd000000000000bbb00000aaa0000000000000000000000000000000000000000000000000000000000000000000
-0cccccc00777777009999900888888800ddddd000000000000bbb000aaaaa0000000000000000000000000000000000000000000000000000000000000000000
-0cccccc077c7cc7009fff900888888000ddddd00077700000bbb000aaaaa00000000000000000000000000000000000000000000000000000000000000000000
-0cc77cc077ccccc09ffffff0888008800dd5dd00777770000bbbbb0aaaaa00000000000000000000000000000000000000000000000000000000000000000000
-0cc77cc077ccccc09ffffff088800888055555007777770000bbb000aaa000000000000000000000000000000000000000000000000000000000000000000000
-0cccccc07777777009fff900888888800555550077777700000b0000aaa000000000000000000000000000000000000000000000000000000000000000000000
-00cccc000077770000999000088880000555550007777000000b00000a0000000000000000000000000000000000000000000000000000000000000000000000
-__sfx__
-000100000c0500c0500c0500c05000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000100001c0501c0501c0501c05000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000100000c3500c3500c3500c35000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00010000157501575015750157500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00010000246502465024650246500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00088000000ddd00000ccc00000bbb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00888800000ddd000cccccc000bbb0b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+08888880000ddd00cc6cc6cc00bbbbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+08888880000d0d00ccc66ccc0bbbbbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+08888880000ddd00cccccccc00bbbb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00888800000d0d000cccccc000bb0b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00088000000ddd00000cc00000bbbb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000aa000000cc0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00aaaa0000ccc0c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0a9aa9a000ccccc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0aaaaaa000cc0cc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0aaaaaa0000ccc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00aaaa00000c0c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000aa0000000c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
